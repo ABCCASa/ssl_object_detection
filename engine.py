@@ -1,5 +1,4 @@
 import math
-
 import coco_eval
 import config
 import plot
@@ -15,7 +14,6 @@ from tools.timer import Timer
 def ema_update(m1: nn.Module, m2: nn.Module, beta: float):
     if not (0 <= beta <= 1):
         raise ValueError(f"decay is {beta}, decay value must between 0 and 1")
-
     with torch.no_grad():
         for p1, p2 in zip(m1.state_dict().values(), m2.state_dict().values()):
             p1.copy_(p1 * beta + (1 - beta) * p2)
@@ -50,7 +48,7 @@ def full_supervised_train_one_epoch(model: nn.Module, train_loader, valid_loader
         accumulation_loss = raw_losses/accumulation_iter
         accumulation_loss.backward()
 
-        need_step = batch_index + 1 % accumulation_iter == 0 or batch_index + 1 == len(train_loader)
+        need_step = (batch_index + 1) % accumulation_iter == 0 or batch_index + 1 == len(train_loader)
         if need_step:
             optimizer.step()
             optimizer.zero_grad()
@@ -124,7 +122,7 @@ def semi_supervised_train_one_epoch(
             weighted_losses = weighted_losses * unsupervised_weight
 
         weighted_losses.backward()
-        need_step = batch_index + 1 % accumulation_iter == 0 or batch_index + 1 == len(train_loader)
+        need_step = (batch_index + 1) % accumulation_iter == 0 or (batch_index + 1) == len(train_loader)
         if need_step:
             optimizer.step()
             optimizer.zero_grad()

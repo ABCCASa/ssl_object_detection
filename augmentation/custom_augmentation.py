@@ -47,6 +47,24 @@ def mix_up(data1, data2):
     return img, target
 
 
+def image_cover(img: torch.Tensor, scores, boxes, threshold):
+    keep = scores >= threshold
+    remove = ~keep
+    keep_box = boxes[keep].to(torch.int32)
+    remove_box = boxes[remove].to(torch.int32)
+    remove_scores = scores[remove]
+    img_mask = torch.ones_like(img)
+
+    for bbox, score in zip(remove_box, remove_scores):
+        x_min, y_min, x_max, y_max = bbox
+        img_mask[:, y_min:y_max, x_min:x_max] *= torch.sqrt(1-score)
+
+    for bbox in keep_box:
+        x_min, y_min, x_max, y_max = bbox
+        img_mask[:, y_min:y_max, x_min:x_max] = 1
+
+    noise = torch.rand_like(img)
+    return img * img_mask + noise * (1-img_mask)
 
 
 

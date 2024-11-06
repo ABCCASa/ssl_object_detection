@@ -8,6 +8,7 @@ import random
 from torchvision.io import read_image
 from torchvision.tv_tensors import BoundingBoxes
 import xml.etree.ElementTree as ET
+from augmentation.custom_augmentation import  image_cover
 from augmentation.reversible_augmentation import get_reversible_augmentation
 import torchvision.transforms.v2.functional as F
 from torchvision.ops import boxes as box_ops
@@ -156,23 +157,6 @@ class PseudoLabelDataset(Dataset):
     def __len__(self):
         return len(self.ids)
 
-    def cover_image(self, img, preds):
-        keep = preds["scores"] >= self.threshold
-        remove = (preds["scores"] >= 0.7) & ~keep
-        keep_box = preds["boxes"][keep].to(torch.int32)
-        remove_box = preds["boxes"][remove].to(torch.int32)
-        img_mask = torch.ones_like(img)
-
-        for bbox in remove_box:
-            x_min, y_min, x_max, y_max = bbox
-            img_mask[:, y_min:y_max, x_min:x_max] = 0
-
-        for bbox in keep_box:
-            x_min, y_min, x_max, y_max = bbox
-            img_mask[:, y_min:y_max, x_min:x_max] = 1
-
-        return img * img_mask
-
     def __getitem__(self, idx):
         self.model.eval()
         img = self.weak_transforms(self.coco_detection.get_image(self.ids[idx]).to(self.device))
@@ -185,10 +169,12 @@ class PseudoLabelDataset(Dataset):
             labels = torch.cat([data["labels"] for data in preds], dim=0)
             scores = torch.cat([data["scores"] for data in preds], dim=0)
 
-            keep = scores >= self.threshold
+            keep = box_ops.batched_nms(boxes, scores, labels, 0.5)
             boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
 
-            keep = box_ops.batched_nms(boxes, scores, labels, 0)
+            img = image_cover(img, scores, boxes, self.threshold)
+
+            keep = scores >= self.threshold
             boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
 
             target = {

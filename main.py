@@ -34,6 +34,8 @@ unlabeled_loader = DataLoader(unlabeled_dataset, batch_size=config.TRAIN_BATCH_S
 ssl_train_loader = CombineDataLoader(labeled_loader, unlabeled_loader)
 
 
+plot.plot_dataset(unlabeled_dataset, "runtime/cover", config.CLASSES)
+
 # start training the model
 target_epoch = 0
 while True:
