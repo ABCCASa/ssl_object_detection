@@ -4,6 +4,9 @@ from torchvision.tv_tensors import BoundingBoxes
 import random
 
 
+__all__ = ["mix_up"]
+
+
 def pad(img, target, width: int, height: int):
     _, h, w = F.get_dimensions(img)
     delta_height = height - h
@@ -11,7 +14,7 @@ def pad(img, target, width: int, height: int):
     left = random.randint(0, delta_width)
     top = random.randint(0, delta_height)
     right = delta_width - left
-    bottom =delta_height - top
+    bottom = delta_height - top
     fill = [left, top, right, bottom]
     img = F.pad(img, fill)
     target["boxes"] = F.pad(target["boxes"], fill)
@@ -37,7 +40,6 @@ def mix_up(data1, data2):
     }
     if "scores" in target1.keys():
         target["scores"] = torch.cat([target1["scores"], target2["scores"]], dim=0)
-
 
     if 'supervised' in target1.keys():
         target['supervised'] = target1['supervised']

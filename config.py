@@ -1,10 +1,15 @@
 import torch
 from torchvision.models.detection.faster_rcnn import fasterrcnn_resnet50_fpn_v2
 from coco_dataset import CocoDetection
+
+
 DETECTION_MODEL = fasterrcnn_resnet50_fpn_v2
-DEVICE = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+DEVICE_COUNT = torch.cuda.device_count()
+DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
 TRAIN_BATCH_SIZE = 2
+
+
 EVAL_BATCH_SIZE = 6
 CHECKPOINT_FREQ = 50  # set checkpoint every x epochs
 
@@ -38,7 +43,7 @@ UNLABELED_USE_RATIO = 1
 # Semi Supervised Learning
 SEMI_SUPERVISED_TRAIN_START = 100  # start semi-supervised learning are x epoch
 PSEUDO_LABEL_THRESHOLD = 0.8
-EMA_UPDATE_BETA = 0.9995
+EMA_UPDATE_BETA = 0.9999
 UNSUPERVISED_WEIGHT = 0.5
 
 

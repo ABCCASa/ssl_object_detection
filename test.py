@@ -28,8 +28,6 @@ student_model.to(config.DEVICE)
 model_log = engine.load(config.MODEL_STORAGE, student_model)
 # ssl data
 
-
-
 img, target = mix_up(valid_dataset[0],valid_dataset[0])
 plot.plot_data(img, target, config.CLASSES, "runtime/mix", "22.png")
 
@@ -103,7 +101,5 @@ class TestModel(nn.Module):
 
 
 test_model = TestModel(student_model, 0)
-
-
 
 evaluate(test_model, valid_loader, config.DEVICE)

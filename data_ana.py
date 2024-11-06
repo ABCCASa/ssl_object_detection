@@ -1,19 +1,45 @@
 from scipy.stats import ttest_ind
-from scipy.stats import sem
+from scipy import stats
 import numpy as np
+import engine
+import config
+
+student_model = config.DETECTION_MODEL(num_classes=config.NUM_CLASSES)
+model_log = engine.load(config.MODEL_STORAGE, student_model)
+model_log.plot_eval()
+
+key = "student"
+range1 = (1.6e5, 3e5)
+range2 = (3.8e5, 5.3e5)
+sample1 =[]
+sample2=[]
+index = 0
+
+for k, v in model_log.evals.items():
+    if model_log.states[k]["supervised"]:
+        if range1[0]< k <range1[1]:
+            sample1.append(v["supervised"][index]*100)
+    else:
+        if range2[0] < k < range2[1]:
+            sample2.append(v[key][index]*100)
 
 
 
 def sde(data):
     mean = np.mean(data)
-    std_error = sem(data)
-    print(f"Mean: {mean}, Standard Error: ±{std_error}")
+    # 样本标准误差
+    se = stats.sem(data)
+    # 确定置信区间范围
+    margin = se * stats.t.ppf((1 + 0.95) / 2, len(data) - 1)
+
+
+    #mean = np.mean(data)
+    #std_error = sem(data)
+    print(f"Mean: {mean}, Standard Error: ±{margin}")
 
 
 
 # 样本数据
-sample1 = [0.04833078360656996, 0.05047675473476866, 0.05543311767069002, 0.04541868458178955, 0.04922674956197564, 0.0462102876247096, 0.04975012918677808, 0.04822758402514339, 0.04657101687817383, 0.04742663197407149, 0.043439234799802884, 0.043566709534921554, 0.04519128858232913, 0.04532401938988177, 0.03882794922956397, 0.047189341090162255, 0.04145004632912111, 0.04363099928969812, 0.044926342181030865, 0.04021795544502135, 0.04292982655107548, 0.04105035696807158, 0.03989351108203239, 0.04375296105929817, 0.04182904558541812, 0.03953656938264552, 0.03871761120972616]
-sample2 = [0.05804002133654598, 0.057301678556121366, 0.059708796763030626, 0.05857576863475946, 0.057369482053844484, 0.06047361843648005, 0.06063345237834799, 0.05481195918725541, 0.05659431942449901, 0.055217360051741944, 0.0526210594419796, 0.060159108309064104, 0.06239742745116016, 0.05701839263328335, 0.05998937218093475, 0.056233974739747235, 0.060240384073123356, 0.06217874835703225, 0.05827795836537191]
 
 sde(sample1)
 sde(sample2)

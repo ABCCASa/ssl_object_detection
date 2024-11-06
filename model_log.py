@@ -40,8 +40,6 @@ class ModelLog:
         y2 = [0]
         x3 = [0]
         y3 = [0]
-
-
         for k, v in self.evals.items():
             if self.states[k]["supervised"]:
                 x1.append(k)

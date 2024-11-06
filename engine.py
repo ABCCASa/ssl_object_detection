@@ -1,3 +1,5 @@
+import math
+
 import coco_eval
 import config
 import plot
@@ -41,10 +43,12 @@ def full_supervised_train_one_epoch(model: nn.Module, train_loader, valid_loader
     train_timer.start()
 
     for images, targets in train_loader:
+
         images = list(image.to(config.DEVICE) for image in images)
         targets = [{k: v.to(config.DEVICE) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
         loss_dict = model(images, targets)
         losses = sum_loss(loss_dict)
+
         optimizer.zero_grad()
         losses.backward()
         optimizer.step()

@@ -7,8 +7,6 @@ def labels_getter(*inputs):
     result = [target["labels"]]
     if "scores" in target.keys():
         result.append(target["scores"])
-    if "reg_confs" in target.keys():
-        result.append(target["reg_confs"])
     return tuple(result)
 
 
