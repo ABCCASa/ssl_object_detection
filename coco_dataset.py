@@ -151,30 +151,7 @@ class PseudoLabelDataset(Dataset):
         self.reversible_augmentation = get_reversible_augmentation()
 
         with open(sample_file, "r") as file:
-            self.full_ids = [int(x.strip()) for x in file.readlines()]
-
-        self.ratio = 1
-        self.ids = self.full_ids
-
-    def get_ratio(self):
-        return self.ratio
-
-    def set_ratio(self, ratio, resample=False):
-        self.ratio = min(max(0, ratio), 1)
-        if resample:
-            self.resample()
-        else:
-            self.default_sample()
-
-    def resample(self):
-        count = int(len(self.full_ids) * self.ratio)
-        self.ids = random.sample(self.full_ids, count)
-        print(f"Dataset resampled,{count} ({self.ratio*100:.2f}%) of unlabeled images are used for unsupervised training")
-
-    def default_sample(self):
-        count = int(len(self.full_ids) * self.ratio)
-        self.ids = self.full_ids[: count]
-        print(f"Dataset use default sample,{count} ({self.ratio * 100:.2f}%) of unlabeled images are used for unsupervised training")
+            self.ids = [int(x.strip()) for x in file.readlines()]
 
     def __len__(self):
         return len(self.ids)

@@ -8,7 +8,7 @@ DEVICE_COUNT = torch.cuda.device_count()
 DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
 TRAIN_BATCH_SIZE = 2
-
+GRADIENT_ACCUMULATION = 3
 
 EVAL_BATCH_SIZE = 6
 CHECKPOINT_FREQ = 50  # set checkpoint every x epochs
@@ -35,10 +35,6 @@ LABELED_SAMPLE = "COCODataset2014/samples/labeled/10%.txt"
 UNLABELED_SAMPLE = "COCODataset2014/samples/unlabeled/20%.txt"
 VALID_SAMPLE = "COCODataset2014/samples/valid/5%.txt"
 
-
-# Unlabeled setting
-UNLABELED_RANDOM_SAMPLE = False
-UNLABELED_USE_RATIO = 1
 
 # Semi Supervised Learning
 SEMI_SUPERVISED_TRAIN_START = 100  # start semi-supervised learning are x epoch

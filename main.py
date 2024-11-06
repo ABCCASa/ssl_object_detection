@@ -30,7 +30,6 @@ valid_loader = DataLoader(valid_dataset, batch_size=config.EVAL_BATCH_SIZE, shuf
 unlabeled_dataset = PseudoLabelDataset(coco_detection, config.UNLABELED_SAMPLE,data_augmentation. get_transform_unsupervised_weak(),
                                        data_augmentation.get_transform_unsupervised_strong(), teacher_model, config.DEVICE,
                                        config.PSEUDO_LABEL_THRESHOLD)
-unlabeled_dataset.set_ratio(config.UNLABELED_USE_RATIO, resample=config.UNLABELED_RANDOM_SAMPLE)
 unlabeled_loader = DataLoader(unlabeled_dataset, batch_size=config.TRAIN_BATCH_SIZE, shuffle=True, collate_fn=common_utils.collate_fn)
 ssl_train_loader = CombineDataLoader(labeled_loader, unlabeled_loader)
 
@@ -46,16 +45,14 @@ while True:
     # train one epoch model
     if model_log.epoch_num < config.SEMI_SUPERVISED_TRAIN_START:
         engine.full_supervised_train_one_epoch(student_model, labeled_loader, valid_loader, optimizer,
-                                               lr_scheduler, model_log)
+                                               lr_scheduler, model_log, config.GRADIENT_ACCUMULATION)
 
     else:
         if not model_log.get_ssl_init():
             model_log.set_ssl_init()
             teacher_model.load_state_dict(student_model.state_dict())
-        if config.UNLABELED_RANDOM_SAMPLE:
-            unlabeled_dataset.resample()
         engine.semi_supervised_train_one_epoch(student_model, teacher_model, ssl_train_loader, valid_loader, optimizer, lr_scheduler,
-                                               model_log, config.EMA_UPDATE_BETA, config.UNSUPERVISED_WEIGHT)
+                                               model_log, config.EMA_UPDATE_BETA, config.UNSUPERVISED_WEIGHT, config.GRADIENT_ACCUMULATION)
 
     engine.save(student_model, teacher_model, optimizer, lr_scheduler, model_log, config.MODEL_STORAGE, config.CHECKPOINT_FREQ)
 
