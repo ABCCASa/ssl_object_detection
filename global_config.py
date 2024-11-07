@@ -2,22 +2,21 @@ import torch
 from torchvision.models.detection.faster_rcnn import fasterrcnn_resnet50_fpn_v2
 from coco_dataset import CocoDetection
 
-
 DETECTION_MODEL = fasterrcnn_resnet50_fpn_v2
-DEVICE_COUNT = torch.cuda.device_count()
+
 DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
-TRAIN_BATCH_SIZE = 2
-GRADIENT_ACCUMULATION = 3
+TRAIN_BATCH_SIZE = 4
+GRADIENT_ACCUMULATION = 4
 
 EVAL_BATCH_SIZE = 6
 CHECKPOINT_FREQ = 50  # set checkpoint every x epochs
 
 
 TRAIN_STATE_PRINT_FREQ = 500  # print train state every x iters
-EVAL_FREQ = 4000  # eval every x iters
+EVAL_FREQ = 2000  # eval every x iters
 
-MODEL_STORAGE = "runtime/model_storage"  # the folder for model saving
+MODEL_STORAGE = "model_storage"  # the folder for model saving
 
 # Coco2014 Dataset
 CLASSES = ['background', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
@@ -28,20 +27,9 @@ CLASSES = ['background', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', '
            'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', 'cell phone', 'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book',
            'clock', 'vase', 'scissors', 'teddy bear', 'hair drier', 'toothbrush']
 NUM_CLASSES = len(CLASSES)
-COCO_DETECTION = CocoDetection("COCODataset2014/images", "COCODataset2014/annotations.json", CLASSES)
-
-# SAMPLE
-LABELED_SAMPLE = "COCODataset2014/samples/labeled/10%.txt"
-UNLABELED_SAMPLE = "COCODataset2014/samples/unlabeled/20%.txt"
-VALID_SAMPLE = "COCODataset2014/samples/valid/5%.txt"
 
 
-# Semi Supervised Learning
-SEMI_SUPERVISED_TRAIN_START = 100  # start semi-supervised learning are x epoch
-PSEUDO_LABEL_THRESHOLD = 0.8
-EMA_UPDATE_BETA = 0.9999
-UNSUPERVISED_WEIGHT = 0.5
-
-
+def get_coco_detection():
+    return CocoDetection("COCODataset2014/images", "COCODataset2014/annotations.json", CLASSES)
 
 

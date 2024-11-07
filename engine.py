@@ -1,6 +1,6 @@
 import math
 import coco_eval
-import config
+import global_config
 import plot
 from model_log import ModelLog
 import os.path
@@ -9,6 +9,8 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 from tools.timer import Timer
+from train_config import TrainConfig
+import json
 
 
 def ema_update(m1: nn.Module, m2: nn.Module, beta: float):
@@ -29,7 +31,7 @@ def sum_loss(x) -> Tensor:
     return res
 
 
-def full_supervised_train_one_epoch(model: nn.Module, train_loader, valid_loader, optimizer, lr_scheduler, model_log: ModelLog, accumulation_iter):
+def full_supervised_train_one_epoch(model: nn.Module, train_loader, valid_loader, optimizer, lr_scheduler, model_log: ModelLog):
     model.train()
     warm_up_lr = None
     if model_log.epoch_num == 0:
@@ -41,23 +43,23 @@ def full_supervised_train_one_epoch(model: nn.Module, train_loader, valid_loader
     train_timer.start()
     optimizer.zero_grad()
     for batch_index, (images, targets) in enumerate(train_loader):
-        images = list(image.to(config.DEVICE) for image in images)
-        targets = [{k: v.to(config.DEVICE) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
+        images = list(image.to(global_config.DEVICE) for image in images)
+        targets = [{k: v.to(global_config.DEVICE) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
         loss_dict = model(images, targets)
         raw_losses = sum_loss(loss_dict)
-        accumulation_loss = raw_losses/accumulation_iter
+        accumulation_loss = raw_losses / global_config.GRADIENT_ACCUMULATION
         accumulation_loss.backward()
 
-        need_step = (batch_index + 1) % accumulation_iter == 0 or batch_index + 1 == len(train_loader)
+        need_step = (batch_index + 1) % global_config.GRADIENT_ACCUMULATION == 0 or batch_index + 1 == len(train_loader)
         if need_step:
             optimizer.step()
             optimizer.zero_grad()
 
-        # update learning rate
-        if warm_up_lr is not None:
-            warm_up_lr.step()
-        else:
-            lr_scheduler.step()
+            # update learning rate
+            if warm_up_lr is not None:
+                warm_up_lr.step()
+            else:
+                lr_scheduler.step()
 
         # training state
         training_state = {"lr": optimizer.param_groups[0]['lr'], "losses": raw_losses.item()}
@@ -65,8 +67,8 @@ def full_supervised_train_one_epoch(model: nn.Module, train_loader, valid_loader
             training_state[k] = v.item()
 
         # log the train state
-        if model_log.iter_num % config.TRAIN_STATE_PRINT_FREQ == 0 or batch_index == 0 or batch_index+1 == len(train_loader):
-            loss_log = f"[epoch: {model_log.epoch_num}, iter: {model_log.current_epoch_iter}/{len(train_loader)}, total_iter: {model_log.iter_num}]"
+        if model_log.iter_num % global_config.TRAIN_STATE_PRINT_FREQ == 0 or batch_index == 0 or batch_index+1 == len(train_loader):
+            loss_log = f"[epoch: {model_log.epoch_num}, iter: {batch_index+1}/{len(train_loader)}, total_iter: {model_log.iter_num}]"
             for k, v in training_state.items():
                 loss_log += f" {k}: {v:.6f}"
             print(loss_log)
@@ -77,10 +79,10 @@ def full_supervised_train_one_epoch(model: nn.Module, train_loader, valid_loader
         model_log.one_iter(training_state)
 
         # evaluate the model
-        if model_log.iter_num % config.EVAL_FREQ == 0:
+        if model_log.iter_num % global_config.EVAL_FREQ == 0:
             train_timer.stop()
             evals = dict()
-            evals["supervised"] = coco_eval.evaluate(model, valid_loader, device=config.DEVICE).coco_eval.stats
+            evals["supervised"] = coco_eval.evaluate(model, valid_loader, device=global_config.DEVICE).coco_eval.stats
             model.train()
             model_log.update_eval(evals)
             train_timer.start()
@@ -102,8 +104,7 @@ def semi_supervised_train_one_epoch(
         lr_scheduler,
         model_log: ModelLog,
         ema_beta,
-        unsupervised_weight,
-        accumulation_iter
+        unsupervised_weight
         ):
 
     student_model.train()
@@ -112,23 +113,23 @@ def semi_supervised_train_one_epoch(
     optimizer.zero_grad()
     for batch_index, (images, targets) in enumerate(train_loader):
         is_supervised = targets[0]["supervised"]
-        images = list(image.to(config.DEVICE) for image in images)
-        targets = [{k: v.to(config.DEVICE) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
+        images = list(image.to(global_config.DEVICE) for image in images)
+        targets = [{k: v.to(global_config.DEVICE) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
         loss_dict = student_model(images, targets)
         raw_losses = sum_loss(loss_dict)
 
-        weighted_losses = raw_losses/accumulation_iter
+        weighted_losses = raw_losses/global_config.GRADIENT_ACCUMULATION
         if not is_supervised:
             weighted_losses = weighted_losses * unsupervised_weight
 
         weighted_losses.backward()
-        need_step = (batch_index + 1) % accumulation_iter == 0 or (batch_index + 1) == len(train_loader)
+        need_step = (batch_index + 1) % global_config.GRADIENT_ACCUMULATION == 0 or (batch_index + 1) == len(train_loader)
         if need_step:
             optimizer.step()
             optimizer.zero_grad()
             ema_update(teacher_model, student_model, ema_beta)
 
-        lr_scheduler.step()
+            lr_scheduler.step()
 
         # training state
         training_state = {"lr": optimizer.param_groups[0]['lr'], "losses": raw_losses.item()}
@@ -136,8 +137,8 @@ def semi_supervised_train_one_epoch(
             training_state[k] = v.item()
 
         # log the train state
-        if model_log.iter_num % config.TRAIN_STATE_PRINT_FREQ == 0 or batch_index == 0 or batch_index + 1 == len(train_loader):
-            loss_log = f"[epoch: {model_log.epoch_num}, iter: {model_log.current_epoch_iter}/{len(train_loader)}, total_iter: {model_log.iter_num}]"
+        if model_log.iter_num % global_config.TRAIN_STATE_PRINT_FREQ == 0 or batch_index == 0 or batch_index + 1 == len(train_loader):
+            loss_log = f"[epoch: {model_log.epoch_num}, iter: {batch_index+1}/{len(train_loader)}, total_iter: {model_log.iter_num}]"
             for k, v in training_state.items():
                 loss_log += f" {k}: {v:.6f}"
             print(loss_log)
@@ -147,15 +148,15 @@ def semi_supervised_train_one_epoch(
         model_log.one_iter(training_state)
 
         # evaluate the model
-        if model_log.iter_num % config.EVAL_FREQ == 0:
+        if model_log.iter_num % global_config.EVAL_FREQ == 0:
             train_timer.stop()
             evals = {}
             print("Student Model:")
-            evals["student"] = coco_eval.evaluate(student_model, valid_loader, device=config.DEVICE).coco_eval.stats
+            evals["student"] = coco_eval.evaluate(student_model, valid_loader, device=global_config.DEVICE).coco_eval.stats
             student_model.train()
             if ema_beta < 1:
                 print("\nTeacher Model:")
-                evals["teacher"] = coco_eval.evaluate(teacher_model, valid_loader, device=config.DEVICE).coco_eval.stats
+                evals["teacher"] = coco_eval.evaluate(teacher_model, valid_loader, device=global_config.DEVICE).coco_eval.stats
 
             model_log.update_eval(evals)
             train_timer.start()
@@ -168,11 +169,12 @@ def semi_supervised_train_one_epoch(
     model_log.one_epoch()
 
 
-def save(student_model, teacher_model, optimizer, lr, model_log, save_folder, checkpoint_freq=None):
+def save(student_model, teacher_model, train_config, optimizer, lr, model_log, save_folder, checkpoint_freq=None):
     print("Model Saving...")
     if not os.path.exists(save_folder):
         os.makedirs(save_folder)
 
+    train_config.save(os.path.join(save_folder, 'train_config.json'))
     file_name = os.path.join(save_folder, "model.pth")
     data = {
             "student_model": student_model.state_dict(),
@@ -193,11 +195,12 @@ def save(student_model, teacher_model, optimizer, lr, model_log, save_folder, ch
         shutil.copy(file_name, checkpoint_file)
 
 
-def load(load_folder, student_model=None, teacher_model=None, optimizer=None, lr=None) -> ModelLog:
+def load(load_folder, student_model=None, teacher_model=None, optimizer=None, lr=None) -> (ModelLog, TrainConfig):
     file_dir = os.path.join(load_folder, "model.pth")
     if os.path.exists(file_dir):
         datas = torch.load(file_dir)
         log = datas["log"]
+
         if student_model is not None:
             student_model.load_state_dict(datas["student_model"])
 
@@ -213,6 +216,6 @@ def load(load_folder, student_model=None, teacher_model=None, optimizer=None, lr
 
         if lr is not None:
             lr.load_state_dict(datas["lr"])
-        return log
+        return log, TrainConfig(os.path.join(load_folder, 'train_config.json'))
     else:
-        return ModelLog()
+        return ModelLog(), TrainConfig()

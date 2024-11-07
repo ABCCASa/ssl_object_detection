@@ -57,7 +57,7 @@ def image_cover(img: torch.Tensor, scores, boxes, threshold):
 
     for bbox, score in zip(remove_box, remove_scores):
         x_min, y_min, x_max, y_max = bbox
-        img_mask[:, y_min:y_max, x_min:x_max] *= torch.sqrt(1-score)
+        img_mask[:, y_min:y_max, x_min:x_max] *= torch.sqrt(1-score*0.75)
 
     for bbox in keep_box:
         x_min, y_min, x_max, y_max = bbox
@@ -65,10 +65,5 @@ def image_cover(img: torch.Tensor, scores, boxes, threshold):
 
     noise = torch.rand_like(img)
     return img * img_mask + noise * (1-img_mask)
-
-
-
-
-
 
 

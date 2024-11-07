@@ -2,10 +2,10 @@ from scipy.stats import ttest_ind
 from scipy import stats
 import numpy as np
 import engine
-import config
+import global_config
 
-student_model = config.DETECTION_MODEL(num_classes=config.NUM_CLASSES)
-model_log = engine.load(config.MODEL_STORAGE, student_model)
+student_model = global_config.DETECTION_MODEL(num_classes=global_config.NUM_CLASSES)
+model_log = engine.load(global_config.MODEL_STORAGE, student_model)
 model_log.plot_eval()
 
 key = "student"

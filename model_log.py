@@ -22,9 +22,6 @@ class ModelLog:
         self.iter_per_epoch[self.epoch_num] = self.current_epoch_iter
         self.current_epoch_iter = 0
 
-    def get_current_epoch_iter(self):
-        return self.current_epoch_iter
-
     def one_iter(self, train_state):
         self.iter_num += 1
         self.current_epoch_iter += 1
