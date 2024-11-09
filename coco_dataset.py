@@ -124,11 +124,14 @@ class CocoDetection(Dataset):
 
 
 class LabeledDataset(Dataset):
-    def __init__(self, coco_detection: CocoDetection, transforms, sample_file):
+    def __init__(self, coco_detection: CocoDetection, transforms, sample_file=None):
         self.coco_detection = coco_detection
         self.transforms = transforms
-        with open(sample_file, "r") as file:
-            self.ids = [int(x.strip()) for x in file.readlines()]
+        if sample_file is None:
+            self.ids = list(range(len(coco_detection)))
+        else:
+            with open(sample_file, "r") as file:
+                self.ids = [int(x.strip()) for x in file.readlines()]
 
     def __len__(self) -> int:
         return len(self.ids)
@@ -142,7 +145,7 @@ class LabeledDataset(Dataset):
 
 
 class PseudoLabelDataset(Dataset):
-    def __init__(self, coco_detection: CocoDetection, sample_file, weak_transforms, strong_transforms, model, device, threshold):
+    def __init__(self, coco_detection: CocoDetection, weak_transforms, strong_transforms, model, device, threshold, sample_file=None):
         self.coco_detection = coco_detection
         self.device = device
         self.model = model
@@ -151,8 +154,12 @@ class PseudoLabelDataset(Dataset):
         self.strong_transforms = strong_transforms
         self.reversible_augmentation = get_reversible_augmentation()
 
-        with open(sample_file, "r") as file:
-            self.ids = [int(x.strip()) for x in file.readlines()]
+        if sample_file is None:
+            self.ids = list(range(len(coco_detection)))
+        else:
+            with open(sample_file, "r") as file:
+                self.ids = [int(x.strip()) for x in file.readlines()]
+
 
     def __len__(self):
         return len(self.ids)

@@ -19,11 +19,11 @@ for i in range(len(model_names)):
     print(f"    [{i}] {model_names[i]}")
 select_index = common_utils.input_int("Please select model, enter -1 for create a new model: ", -1, len(model_names)-1)
 
-model_storage = None
+model_storage_folder = None
 if select_index >= 0:
-    model_storage = os.path.join(root_folder, model_names[select_index])
+    model_storage_folder = os.path.join(root_folder, model_names[select_index])
 else:
-    model_storage = os.path.join(root_folder, common_utils.get_valid_filename("Please enter new model file name: "))
+    model_storage_folder = os.path.join(root_folder, common_utils.get_valid_filename("Please enter new model file name: "))
 
 
 # create and load model, optimizer and lr_scheduler
@@ -33,7 +33,7 @@ teacher_model = global_config.DETECTION_MODEL(num_classes=global_config.NUM_CLAS
 teacher_model.to(global_config.DEVICE)
 optimizer = torch.optim.SGD(student_model.parameters(), lr=5e-3, momentum=0.9, weight_decay=0.0005)
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=200, gamma=0.995)
-model_log, train_config = engine.load(model_storage, student_model, teacher_model, optimizer, lr_scheduler)
+model_log, train_config = engine.load(model_storage_folder, student_model, teacher_model, optimizer, lr_scheduler)
 print()
 train_config.print_out()
 
@@ -46,9 +46,9 @@ valid_dataset = LabeledDataset(coco_detection, data_augmentation.get_transform_v
 valid_loader = DataLoader(valid_dataset, batch_size=global_config.EVAL_BATCH_SIZE, shuffle=False, collate_fn=common_utils.collate_fn)
 
 # ssl data
-unlabeled_dataset = PseudoLabelDataset(coco_detection, train_config.UNLABELED_SAMPLE, data_augmentation. get_transform_unsupervised_weak(),
+unlabeled_dataset = PseudoLabelDataset(coco_detection, data_augmentation. get_transform_unsupervised_weak(),
                                        data_augmentation.get_transform_unsupervised_strong(), teacher_model, global_config.DEVICE,
-                                       train_config.PSEUDO_LABEL_THRESHOLD)
+                                       train_config.PSEUDO_LABEL_THRESHOLD, train_config.UNLABELED_SAMPLE)
 unlabeled_loader = DataLoader(unlabeled_dataset, batch_size=global_config.TRAIN_BATCH_SIZE, shuffle=True, collate_fn=common_utils.collate_fn)
 ssl_train_loader = CombineDataLoader(labeled_loader, unlabeled_loader)
 
@@ -57,7 +57,7 @@ ssl_train_loader = CombineDataLoader(labeled_loader, unlabeled_loader)
 target_epoch = 0
 while True:
     if model_log.epoch_num >= target_epoch:
-        target_epoch = common_utils.input_int(f"current {model_log.epoch_num} epoch，please enter target epoch：", 0)
+        target_epoch = common_utils.input_int(f"current {model_log.epoch_num} epoch, please enter target epoch: ", 0)
         if model_log.epoch_num >= target_epoch:
             break
 
@@ -69,8 +69,8 @@ while True:
         if not model_log.get_ssl_init():
             model_log.set_ssl_init()
             teacher_model.load_state_dict(student_model.state_dict())
-        engine.semi_supervised_train_one_epoch(student_model, teacher_model, ssl_train_loader, valid_loader, optimizer, lr_scheduler,
-                                               model_log, train_config.EMA_UPDATE_BETA, train_config.UNSUPERVISED_WEIGHT)
+        engine.semi_supervised_train_one_epoch(student_model, teacher_model, ssl_train_loader, valid_loader, optimizer, lr_scheduler,model_log,
+                                               train_config)
 
-    engine.save(student_model, teacher_model, train_config, optimizer, lr_scheduler, model_log, model_storage, global_config.CHECKPOINT_FREQ)
+    engine.save(student_model, teacher_model, train_config, optimizer, lr_scheduler, model_log, model_storage_folder, global_config.CHECKPOINT_FREQ)
 

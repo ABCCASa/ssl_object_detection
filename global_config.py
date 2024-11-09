@@ -30,6 +30,6 @@ NUM_CLASSES = len(CLASSES)
 
 
 def get_coco_detection():
-    return CocoDetection("COCODataset2014/images", "COCODataset2014/annotations.json", CLASSES)
+    return CocoDetection("COCODataset/images", "COCODataset/annotations/train.json", CLASSES)
 
 

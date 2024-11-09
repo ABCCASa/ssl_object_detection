@@ -4,7 +4,6 @@ import json
 def get_default():
     return TrainConfig()
 
-
 class TrainConfig:
     def __init__(self, load_dir=None):
 
@@ -30,8 +29,8 @@ class TrainConfig:
         # Semi Supervised Learning
         self.SEMI_SUPERVISED_TRAIN_START = 100  # start semi-supervised learning are x epoch
         self.PSEUDO_LABEL_THRESHOLD = 0.8
-        self.EMA_UPDATE_BETA = 0.9999
-        self.UNSUPERVISED_WEIGHT = 0.5
+        self.EMA_UPDATE_BETA = 0.999
+        self.UNSUPERVISED_WEIGHT = 1
 
         print(f"SEMI_SUPERVISED_TRAIN_START = {self.SEMI_SUPERVISED_TRAIN_START}",
               f"PSEUDO_LABEL_THRESHOLD = {self.PSEUDO_LABEL_THRESHOLD}",

@@ -103,10 +103,10 @@ def semi_supervised_train_one_epoch(
         optimizer,
         lr_scheduler,
         model_log: ModelLog,
-        ema_beta,
-        unsupervised_weight
+        train_config: TrainConfig
         ):
-
+    ema_beta = train_config.EMA_UPDATE_BETA
+    unsupervised_weight = train_config.UNSUPERVISED_WEIGHT
     student_model.train()
     train_timer = Timer()
     train_timer.start()
