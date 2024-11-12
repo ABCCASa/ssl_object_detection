@@ -4,7 +4,7 @@ from torchvision.tv_tensors import BoundingBoxes
 import random
 
 
-__all__ = ["mix_up"]
+__all__ = ["mix_up", "image_cover"]
 
 
 def pad(img, target, width: int, height: int):

@@ -12,7 +12,7 @@ def labels_getter(*inputs):
 
 def get_transform_supervised():
     transforms = [
-                  T.RandomIoUCrop(0.7, 1, 0.5, 2),
+                  #T.RandomIoUCrop(0.7, 1, 0.5, 2),
                   T.ColorJitter(0.4, 0.6,  0.6, 0.05),
                   T.RandomHorizontalFlip(p=0.5),
                   T.ClampBoundingBoxes(),
@@ -24,15 +24,16 @@ def get_transform_supervised():
 
 def get_transform_unsupervised_weak():
     transforms = [
-                  T.RandomHorizontalFlip(p=0.5),
-                  T.ToDtype(torch.float, scale=True)
-                  ]
+        T.RandomHorizontalFlip(p=0.5),
+        T.ColorJitter(0.4, 0.6, 0.6, 0.05),
+        T.ToDtype(torch.float, scale=True)
+    ]
     return T.Compose(transforms)
 
 
 def get_transform_unsupervised_strong():
     transforms = [
-                  T.RandomIoUCrop(0.7, 1, 0.5, 2),
+                  # T.RandomIoUCrop(0.7, 1, 0.5, 2),
                   T.RandomPhotometricDistort(),
                   T.RandomHorizontalFlip(p=0.5),
                   T.RandomErasing(0.5, (0.01, 0.1), (0.3, 3.3)),

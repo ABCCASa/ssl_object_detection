@@ -9,6 +9,7 @@ DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('
 TRAIN_BATCH_SIZE = 4
 GRADIENT_ACCUMULATION = 4
 
+
 EVAL_BATCH_SIZE = 6
 CHECKPOINT_FREQ = 50  # set checkpoint every x epochs
 

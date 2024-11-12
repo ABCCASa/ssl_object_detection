@@ -8,7 +8,10 @@ import random
 from torchvision.io import read_image
 from torchvision.tv_tensors import BoundingBoxes
 import xml.etree.ElementTree as ET
-from augmentation.custom_augmentation import  image_cover
+
+import global_config
+import plot
+from augmentation.custom_augmentation import image_cover
 from augmentation.reversible_augmentation import get_reversible_augmentation
 import torchvision.transforms.v2.functional as F
 from torchvision.ops import boxes as box_ops
@@ -160,7 +163,6 @@ class PseudoLabelDataset(Dataset):
             with open(sample_file, "r") as file:
                 self.ids = [int(x.strip()) for x in file.readlines()]
 
-
     def __len__(self):
         return len(self.ids)
 
@@ -179,7 +181,7 @@ class PseudoLabelDataset(Dataset):
             keep = box_ops.batched_nms(boxes, scores, labels, 0.5)
             boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
 
-            img = image_cover(img, scores, boxes, self.threshold)
+            #img = image_cover(img, scores, boxes, self.threshold)
 
             keep = scores >= self.threshold
             boxes, labels, scores = boxes[keep], labels[keep], scores[keep]

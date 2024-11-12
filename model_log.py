@@ -30,7 +30,7 @@ class ModelLog:
     def update_eval(self, data):
         self.evals[self.iter_num] = data
 
-    def plot_eval(self, index=0):
+    def plot_eval(self, save_file, index=0):
         x1 = []
         y1 = []
         x2 = [0]
@@ -59,5 +59,6 @@ class ModelLog:
         plt.plot(x3, y3)
         plt.plot(x2, y2)
         plt.plot(x1, y1)
-        plt.show()
 
+        plt.savefig(save_file)
+        plt.clf()
