@@ -12,11 +12,16 @@ __all__ = [
 
 
 def collate_fn(batch):
+    return tuple(zip(*batch))
+
+
+def collate_mix(batch):
     if not batch[0][1]["supervised"] and len(batch) >= 2 and random.random() < 0.5:
         sample1 = batch.pop()
         sample2 = batch.pop()
         batch.append(custom_augmentation.mix_up(sample1, sample2))
     return tuple(zip(*batch))
+
 
 
 def input_float(prompt, min_value: float = None, max_value: float = None):

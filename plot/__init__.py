@@ -34,6 +34,15 @@ def plot_dataset(dataset, save_folder, classes):
         plot_data(image, target, classes, save_folder, f"{index}.png")
 
 
+def plot_dataloader(dataloader, save_folder, classes):
+    index = 0
+    if not os.path.exists(save_folder):
+        os.makedirs(save_folder)
+    for images, targets in dataloader:
+        for image, target in zip(images, targets):
+            plot_data(image, target, classes, save_folder, f"{index}.png")
+            index += 1
+
 def plot_data(image, target, classes, save_folder, data_name):
     if not os.path.exists(save_folder):
         os.makedirs(save_folder)

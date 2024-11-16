@@ -3,7 +3,7 @@ import global_config
 import common_utils
 from torch.utils.data import DataLoader
 from augmentation import data_augmentation
-from coco_dataset import LabeledDataset
+from coco_dataset import CocoDataset
 import coco_eval
 import global_config
 import plot
@@ -18,7 +18,7 @@ from augmentation.custom_augmentation import mix_up
 # create dataset and dataLoader
 coco_detection = global_config.COCO_DETECTION
 
-valid_dataset = LabeledDataset(coco_detection, data_augmentation.get_transform_valid(), global_config.VALID_SAMPLE)
+valid_dataset = CocoDataset(coco_detection, data_augmentation.get_transform_valid(), global_config.VALID_SAMPLE)
 valid_loader = DataLoader(valid_dataset, batch_size=3, shuffle=False, collate_fn=common_utils.collate_fn)
 
 # create and load model, optimizer and lr_scheduler

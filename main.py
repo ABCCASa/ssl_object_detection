@@ -3,7 +3,7 @@ import global_config
 import common_utils
 from torch.utils.data import DataLoader
 from augmentation import data_augmentation
-from coco_dataset import LabeledDataset, PseudoLabelDataset, CombineDataLoader
+from coco_dataset import CocoDataset, PseudoLabelDataLoader, CombineDataLoader
 import coco_eval
 import plot
 import torch
@@ -40,18 +40,21 @@ train_config.print_out()
 
 # create dataset and dataLoader
 coco_detection = global_config.get_coco_detection()
-labeled_dataset = LabeledDataset(coco_detection, data_augmentation.get_transform_supervised(), train_config.LABELED_SAMPLE)
+labeled_dataset = CocoDataset(coco_detection, data_augmentation.get_transform_supervised(), train_config.LABELED_SAMPLE)
 labeled_loader = DataLoader(labeled_dataset, batch_size=global_config.TRAIN_BATCH_SIZE, shuffle=True, collate_fn=common_utils.collate_fn)
-valid_dataset = LabeledDataset(coco_detection, data_augmentation.get_transform_valid(), train_config.VALID_SAMPLE)
+valid_dataset = CocoDataset(coco_detection, data_augmentation.get_transform_valid(), train_config.VALID_SAMPLE)
 valid_loader = DataLoader(valid_dataset, batch_size=global_config.EVAL_BATCH_SIZE, shuffle=False, collate_fn=common_utils.collate_fn)
 
-# ssl data
-unlabeled_dataset = PseudoLabelDataset(coco_detection, data_augmentation. get_transform_unsupervised_weak(),
-                                       data_augmentation.get_transform_unsupervised_strong(), teacher_model, global_config.DEVICE,
-                                       train_config.PSEUDO_LABEL_THRESHOLD, train_config.UNLABELED_SAMPLE)
-unlabeled_loader = DataLoader(unlabeled_dataset, batch_size=global_config.TRAIN_BATCH_SIZE, shuffle=True, collate_fn=common_utils.collate_fn)
-ssl_train_loader = CombineDataLoader(labeled_loader, unlabeled_loader)
 
+# ssl data
+unlabeled_dataset = CocoDataset(coco_detection, data_augmentation.get_transform_unsupervised_weak(), train_config.UNLABELED_SAMPLE, image_only=True)
+unlabeled_loader = DataLoader(unlabeled_dataset, batch_size=global_config.TRAIN_BATCH_SIZE, shuffle=True, collate_fn=common_utils.collate_fn)
+pseudo_label_loader = PseudoLabelDataLoader(unlabeled_loader, data_augmentation.get_transform_unsupervised_strong(),
+                                            teacher_model, global_config.DEVICE, train_config.PSEUDO_LABEL_THRESHOLD)
+ssl_train_loader = CombineDataLoader(labeled_loader, pseudo_label_loader)
+
+
+plot.plot_dataloader(pseudo_label_loader, "runtime/temp", global_config.CLASSES)
 
 # start training the model
 target_epoch = 0

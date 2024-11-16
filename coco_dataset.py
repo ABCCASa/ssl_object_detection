@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import Any, Tuple, Union
 from pycocotools.coco import COCO
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, DataLoader
 import torch
 import random
 from torchvision.io import read_image
@@ -16,52 +16,7 @@ from augmentation.reversible_augmentation import get_reversible_augmentation
 import torchvision.transforms.v2.functional as F
 from torchvision.ops import boxes as box_ops
 
-
-class VOCDataset(Dataset):
-    def __init__(self, root: Union[str, Path], ann_folder: str, classes):
-        files = os.listdir(root)
-        names = [os.path.splitext(file)[0] for file in files]
-        self.images = [os.path.join(root, x + ".jpg") for x in names]
-        self.targets = [os.path.join(ann_folder, x + ".xml") for x in names]
-        self.classes = classes
-
-    def __len__(self):
-        return len(self.images)
-
-    def __getitem__(self, idx):
-        img = self.get_image(idx)
-        target = self.get_target(idx)
-        return img, target
-
-    def get_image(self, idx):
-        return read_image(self.images[idx])
-
-    def get_target(self, idx):
-        boxes = []
-        labels = []
-        iscrowd = []
-        anno = ET.parse(self.targets[idx]).getroot()
-        size = anno.find("size")
-        size = (int(size.find("height").text), int(size.find("width").text))
-        for obj in anno.iter("object"):
-            difficult = int(obj.find("difficult").text)
-            iscrowd.append(difficult)
-            class_name = obj.find("name").text
-            labels.append(self.classes.index(class_name))
-            _box = obj.find("bndbox")
-            boxes.append([int(_box.find("xmin").text) - 1, int(_box.find("ymin").text) - 1,
-                          int(_box.find("xmax").text) - 1, int(_box.find("ymax").text) - 1])
-
-        boxes = torch.as_tensor(boxes, dtype=torch.float32)
-        target = {
-            "supervised": True,
-            "image_id": idx,
-            "labels": torch.as_tensor(labels, dtype=torch.int64),
-            "area": (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0]),
-            "boxes": BoundingBoxes(boxes, format="XYXY", canvas_size=size),
-            "iscrowd": torch.as_tensor(iscrowd, dtype=torch.int64)
-        }
-        return target
+__all__ = ["CocoDetection", "CocoDataset", "PseudoLabelDataLoader", "CombineDataLoader"]
 
 
 class CocoDetection(Dataset):
@@ -74,21 +29,21 @@ class CocoDetection(Dataset):
 
     def get_image(self, index):
         id = self.ids[index]
-        return self._load_image(id)
+        return self._load_image_with_id(id)
 
     def get_target(self, index):
         id = self.ids[index]
-        return self._load_target(id)
+        return self._load_target_with_id(id)
 
     def get_file_name(self, index):
         id = self.ids[index]
         return self.coco.loadImgs(id)[0]["file_name"]
 
-    def _load_image(self, id: int):
+    def _load_image_with_id(self, id: int):
         path = os.path.join(self.root, self.coco.loadImgs(id)[0]["file_name"])
         return read_image(path)
 
-    def _load_target(self, id: int):
+    def _load_target_with_id(self, id: int):
         coco_annotation = self.coco.loadAnns(self.coco.getAnnIds(id))
         img_data = self.coco.loadImgs(id)[0]
         img_size = (img_data['height'], img_data['width'])
@@ -115,21 +70,20 @@ class CocoDetection(Dataset):
         return target
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
-        if not isinstance(index, int):
-            raise ValueError(f"Index must be of type integer, got {type(index)} instead.")
         id = self.ids[index]
-        image = self._load_image(id)
-        target = self._load_target(id)
+        image = self._load_image_with_id(id)
+        target = self._load_target_with_id(id)
         return image, target
 
     def __len__(self) -> int:
         return len(self.ids)
 
 
-class LabeledDataset(Dataset):
-    def __init__(self, coco_detection: CocoDetection, transforms, sample_file=None):
+class CocoDataset(Dataset):
+    def __init__(self, coco_detection: CocoDetection, transforms, sample_file=None, image_only=False):
         self.coco_detection = coco_detection
         self.transforms = transforms
+        self.image_only = image_only
         if sample_file is None:
             self.ids = list(range(len(coco_detection)))
         else:
@@ -141,60 +95,81 @@ class LabeledDataset(Dataset):
 
     def __getitem__(self, index: int) -> Tuple[Any, Any]:
         id = self.ids[index]
-        image, target = self.coco_detection[id]
-        if self.transforms is not None:
-            image, target = self.transforms(image, target)
-        return image, target
+        if self.image_only:
+            image = self.coco_detection.get_image(id)
+            if self.transforms is not None:
+                image = self.transforms(image)
+            return image, None
+        else:
+            image, target = self.coco_detection[id]
+            if self.transforms is not None:
+                image, target = self.transforms(image, target)
+            return image, target
 
 
-class PseudoLabelDataset(Dataset):
-    def __init__(self, coco_detection: CocoDetection, weak_transforms, strong_transforms, model, device, threshold, sample_file=None):
-        self.coco_detection = coco_detection
+class PseudoLabelDataLoader(Dataset):
+    def __init__(self, dataloader: DataLoader, transforms, model, device, threshold):
+        self.dataloader = dataloader
         self.device = device
         self.model = model
         self.threshold = threshold
-        self.weak_transforms = weak_transforms
-        self.strong_transforms = strong_transforms
-        self.reversible_augmentation = get_reversible_augmentation()
-
-        if sample_file is None:
-            self.ids = list(range(len(coco_detection)))
-        else:
-            with open(sample_file, "r") as file:
-                self.ids = [int(x.strip()) for x in file.readlines()]
+        self.transforms = transforms
 
     def __len__(self):
-        return len(self.ids)
+        return len(self.dataloader)
 
-    def __getitem__(self, idx):
+    def generate_data(self, raw_images):
         self.model.eval()
-        img = self.weak_transforms(self.coco_detection.get_image(self.ids[idx]).to(self.device))
-        _, height, width = F.get_dimensions(img)
+        raw_images = [img.to(self.device) for img in raw_images]
+        flip_images = [F.hflip(img) for img in raw_images]
         with torch.no_grad():
-            preds = self.model([img, F.hflip(img)])
-            preds[1]["boxes"][:, [0, 2]] = width - preds[1]["boxes"][:, [2, 0]]
+            raw_preds = self.model(raw_images)
+            flip_preds = self.model(flip_images)
+            out_images = []
+            out_targets = []
+            for raw_img, raw_pred, flip_pred in zip(raw_images, raw_preds, flip_preds):
+                image, target = self.post_process(raw_img, raw_pred, flip_pred)
+                out_images.append(image)
+                out_targets.append(target)
+        return out_images, out_targets
 
-            boxes = torch.cat([data["boxes"] for data in preds], dim=0)
-            labels = torch.cat([data["labels"] for data in preds], dim=0)
-            scores = torch.cat([data["scores"] for data in preds], dim=0)
+    def post_process(self, img, raw_pred, flip_pred):
+        with torch.no_grad():
+            _, height, width = F.get_dimensions(img)
+            flip_pred["boxes"][:, [0, 2]] = width - flip_pred["boxes"][:, [2, 0]]
+            boxes = torch.cat([raw_pred["boxes"], flip_pred["boxes"]], dim=0)
+            labels = torch.cat([raw_pred["labels"], flip_pred["labels"]], dim=0)
+            scores = torch.cat([raw_pred["scores"], flip_pred["scores"]], dim=0)
 
             keep = box_ops.batched_nms(boxes, scores, labels, 0.5)
             boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
 
-            #img = image_cover(img, scores, boxes, self.threshold)
-
             keep = scores >= self.threshold
             boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
-
             target = {
                 "supervised": False,
                 "labels": labels,
                 "boxes": BoundingBoxes(boxes, format="XYXY", canvas_size=(height, width)),
                 "scores": scores
             }
-        img, target = self.strong_transforms(img, target)
+            if self.transforms is not None:
+                img, target = self.transforms(img, target)
+            return img, target
 
-        return img, target
+    class DataLoaderIter:
+        def __init__(self, loader):
+            self.iter = iter(loader.dataloader)
+            self.loader = loader
+
+        def __len__(self):
+            return len(self.iter)
+
+        def __next__(self):
+            images, _ = next(self.iter)
+            return self.loader.generate_data(images)
+
+    def __iter__(self):
+        return self.DataLoaderIter(self)
 
 
 class CombineDataLoader:
@@ -202,10 +177,8 @@ class CombineDataLoader:
         def __init__(self, data_loader1, data_loader2):
             self.loader1 = iter(data_loader1)
             self.loader2 = iter(data_loader2)
-            length1 = len(self.loader1)
-            length2 = len(self.loader2)
             self.index = 0
-            self.samples = [True]*length1 + [False]*length2
+            self.samples = [True]*len(self.loader1) + [False]*len(self.loader2)
             random.shuffle(self.samples)
 
         def __len__(self):
