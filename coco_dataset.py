@@ -7,12 +7,8 @@ import torch
 import random
 from torchvision.io import read_image
 from torchvision.tv_tensors import BoundingBoxes
-import xml.etree.ElementTree as ET
-
-import global_config
 import plot
 from augmentation.custom_augmentation import image_cover
-from augmentation.reversible_augmentation import get_reversible_augmentation
 import torchvision.transforms.v2.functional as F
 from torchvision.ops import boxes as box_ops
 
