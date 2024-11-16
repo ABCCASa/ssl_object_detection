@@ -1,5 +1,7 @@
+import math
 import coco_eval
 import global_config
+import plot
 from model_log import ModelLog
 import os.path
 import shutil
@@ -8,6 +10,7 @@ from torch import Tensor
 import torch.nn as nn
 from tools.timer import Timer
 from train_config import TrainConfig
+import json
 
 
 def ema_update(m1: nn.Module, m2: nn.Module, beta: float):
@@ -33,33 +36,29 @@ def full_supervised_train_one_epoch(model: nn.Module, train_loader, valid_loader
     warm_up_lr = None
     if model_log.epoch_num == 0:
         warmup_factor = 1.0 / 1000
-        warmup_iters = min(1000, int(len(train_loader)/global_config.GRADIENT_ACCUMULATION) - 1)
+        warmup_iters = min(1000, len(train_loader) - 1)
         warm_up_lr = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=warmup_factor, total_iters=warmup_iters)
 
     train_timer = Timer()
     train_timer.start()
-    optimizer.zero_grad()
     for batch_index, (images, targets) in enumerate(train_loader):
         images = list(image.to(global_config.DEVICE) for image in images)
         targets = [{k: v.to(global_config.DEVICE) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
         loss_dict = model(images, targets)
-        raw_losses = sum_loss(loss_dict)
-        accumulation_loss = raw_losses / global_config.GRADIENT_ACCUMULATION
-        accumulation_loss.backward()
+        loss = sum_loss(loss_dict)
+        loss.backward()
 
-        need_step = (batch_index + 1) % global_config.GRADIENT_ACCUMULATION == 0 or batch_index + 1 == len(train_loader)
-        if need_step:
-            optimizer.step()
-            optimizer.zero_grad()
+        optimizer.step()
+        optimizer.zero_grad()
 
-            # update learning rate
-            if warm_up_lr is not None:
-                warm_up_lr.step()
-            else:
-                lr_scheduler.step()
+        # update learning rate
+        if warm_up_lr is not None:
+            warm_up_lr.step()
+        else:
+            lr_scheduler.step()
 
         # training state
-        training_state = {"lr": optimizer.param_groups[0]['lr'], "losses": raw_losses.item()}
+        training_state = {"lr": optimizer.param_groups[0]['lr'], "losses": loss.item()}
         for k, v in loss_dict.items():
             training_state[k] = v.item()
 
@@ -72,7 +71,6 @@ def full_supervised_train_one_epoch(model: nn.Module, train_loader, valid_loader
 
         # update model logs
         training_state["supervised"] = True
-        training_state["step"] = need_step
         model_log.one_iter(training_state)
 
         # evaluate the model
@@ -82,7 +80,7 @@ def full_supervised_train_one_epoch(model: nn.Module, train_loader, valid_loader
             evals["supervised"] = coco_eval.evaluate(model, valid_loader, device=global_config.DEVICE).coco_eval.stats
             model.train()
             model_log.update_eval(evals)
-            model_log.plot_eval("runtime/eval.png")
+            model_log.plot_eval("runtime")
             train_timer.start()
 
     train_timer.stop()
@@ -114,23 +112,18 @@ def semi_supervised_train_one_epoch(
         images = list(image.to(global_config.DEVICE) for image in images)
         targets = [{k: v.to(global_config.DEVICE) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
         loss_dict = student_model(images, targets)
-        raw_losses = sum_loss(loss_dict)
-
-        weighted_losses = raw_losses / global_config.GRADIENT_ACCUMULATION
+        loss = sum_loss(loss_dict)
         if not is_supervised:
-            weighted_losses = weighted_losses * unsupervised_weight
+            loss = loss * unsupervised_weight
+        loss.backward()
 
-        weighted_losses.backward()
-        need_step = (batch_index + 1) % global_config.GRADIENT_ACCUMULATION == 0 or (batch_index + 1) == len(train_loader)
-        if need_step:
-            optimizer.step()
-            optimizer.zero_grad()
-            ema_update(teacher_model, student_model, ema_beta)
-
-            lr_scheduler.step()
+        optimizer.step()
+        optimizer.zero_grad()
+        ema_update(teacher_model, student_model, ema_beta)
+        lr_scheduler.step()
 
         # training state
-        training_state = {"lr": optimizer.param_groups[0]['lr'], "losses": raw_losses.item()}
+        training_state = {"lr": optimizer.param_groups[0]['lr'], "losses": loss.item()}
         for k, v in loss_dict.items():
             training_state[k] = v.item()
 
@@ -142,7 +135,6 @@ def semi_supervised_train_one_epoch(
             print(loss_log)
 
         training_state["supervised"] = False
-        training_state["step"] = need_step
         model_log.one_iter(training_state)
 
         # evaluate the model
@@ -157,7 +149,7 @@ def semi_supervised_train_one_epoch(
                 evals["teacher"] = coco_eval.evaluate(teacher_model, valid_loader, device=global_config.DEVICE).coco_eval.stats
 
             model_log.update_eval(evals)
-            model_log.plot_eval("runtime/eval.png")
+            model_log.plot_eval("runtime")
             train_timer.start()
 
     train_timer.stop()

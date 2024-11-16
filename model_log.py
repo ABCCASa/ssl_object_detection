@@ -1,3 +1,5 @@
+import os.path
+
 import matplotlib.pyplot as plt
 
 
@@ -30,7 +32,9 @@ class ModelLog:
     def update_eval(self, data):
         self.evals[self.iter_num] = data
 
-    def plot_eval(self, save_file, index=0):
+    def plot_eval(self, save_folder, index=0):
+        if not os.path.exists(save_folder):
+            os.makedirs(save_folder)
         x1 = []
         y1 = []
         x2 = [0]
@@ -60,5 +64,5 @@ class ModelLog:
         plt.plot(x2, y2)
         plt.plot(x1, y1)
 
-        plt.savefig(save_file)
+        plt.savefig(os.path.join(save_folder, "eval.png"))
         plt.clf()
