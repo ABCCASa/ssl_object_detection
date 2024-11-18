@@ -7,7 +7,6 @@ from tools.timer import Timer
 
 @torch.inference_mode()
 def evaluate(model, data_loader, device):
-    print("[Evaluate Model]")
     eval_timer = Timer()
     eval_timer.start()
 

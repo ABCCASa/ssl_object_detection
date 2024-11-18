@@ -43,6 +43,7 @@ def plot_dataloader(dataloader, save_folder, classes):
             plot_data(image, target, classes, save_folder, f"{index}.png")
             index += 1
 
+
 def plot_data(image, target, classes, save_folder, data_name):
     if not os.path.exists(save_folder):
         os.makedirs(save_folder)
@@ -50,9 +51,9 @@ def plot_data(image, target, classes, save_folder, data_name):
     labels = target["labels"]
     boxes = target["boxes"].long()
     if "scores" in target.keys():
-        labels = [f"{classes[label]}: {score:.3f}" for label, score in zip( labels, target["scores"])]
+        labels = [f"{classes[label]}: {score:.3f}" for label, score in zip(labels, target["scores"])]
     else:
-        labels = [classes[label.item()] for label in labels]
+        labels = [classes[label] for label in labels]
 
-    output_image = draw_bounding_boxes(image, boxes, labels, colors="red")
+    output_image = draw_bounding_boxes(image, boxes, labels, colors="red",width=3)
     torchvision.transforms.ToPILImage()(output_image).save(f"{save_folder}/{data_name}")

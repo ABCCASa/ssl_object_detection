@@ -31,61 +31,64 @@ def sum_loss(x) -> Tensor:
     return res
 
 
-def full_supervised_train_one_epoch(model: nn.Module, train_loader, valid_loader, optimizer, lr_scheduler, model_log: ModelLog):
+def full_supervised_train_one_epoch(model: nn.Module, train_loader, valid_loader, optimizer, lr_scheduler, model_log: ModelLog, train_config: TrainConfig):
     model.train()
-    warm_up_lr = None
-    if model_log.epoch_num == 0:
-        warmup_factor = 1.0 / 1000
-        warmup_iters = min(1000, len(train_loader) - 1)
-        warm_up_lr = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=warmup_factor, total_iters=warmup_iters)
-
     train_timer = Timer()
     train_timer.start()
-    for batch_index, (images, targets) in enumerate(train_loader):
+    batch_index = 0
+
+    for images, targets in train_loader:
+        early_complete = model_log.iter_num+1 >= train_config.SEMI_SUPERVISED_TRAIN_START
+
         images = list(image.to(global_config.DEVICE) for image in images)
         targets = [{k: v.to(global_config.DEVICE) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
         loss_dict = model(images, targets)
         loss = sum_loss(loss_dict)
-        loss.backward()
 
-        optimizer.step()
-        optimizer.zero_grad()
-
-        # update learning rate
-        if warm_up_lr is not None:
-            warm_up_lr.step()
-        else:
-            lr_scheduler.step()
-
-        # training state
-        training_state = {"lr": optimizer.param_groups[0]['lr'], "losses": loss.item()}
-        for k, v in loss_dict.items():
-            training_state[k] = v.item()
-
-        # log the train state
+        # loss log
+        lr = optimizer.param_groups[0]['lr']
         if model_log.iter_num % global_config.TRAIN_STATE_PRINT_FREQ == 0 or batch_index == 0 or batch_index + 1 == len(train_loader):
-            loss_log = f"[epoch: {model_log.epoch_num}, iter: {batch_index + 1}/{len(train_loader)}, total_iter: {model_log.iter_num}]"
-            for k, v in training_state.items():
-                loss_log += f" {k}: {v:.6f}"
+            loss_log = f"[epoch: {model_log.epoch_num}, iter: {batch_index + 1}/{len(train_loader)} total_iter: {model_log.iter_num}]"
+            loss_log += f" lr: {lr:.6f}, loss: {loss: .6f}"
+            for k, v in loss_dict.items():
+                loss_log += f", {k}: {v:.6f}"
             print(loss_log)
 
+        # update learning rate
+        loss = loss / global_config.ACCUMULATION_STEPS
+        loss.backward()
+        need_step = (batch_index+1) % 4 == 0 or batch_index+1 == len(train_loader) or early_complete
+        if need_step:
+            optimizer.step()
+            optimizer.zero_grad()
+            lr_scheduler.step()
+
         # update model logs
-        training_state["supervised"] = True
-        model_log.one_iter(training_state)
+        model_log.one_iter({
+            "lr": lr,
+            "loss_dict": {k: v.item() for k, v in loss_dict.items()},
+            "full_supervised": True,
+            "step": need_step
+        })
 
         # evaluate the model
         if model_log.iter_num % global_config.EVAL_FREQ == 0:
             train_timer.stop()
             evals = dict()
+            print("\n[Evaluate Model]")
             evals["supervised"] = coco_eval.evaluate(model, valid_loader, device=global_config.DEVICE).coco_eval.stats
             model.train()
             model_log.update_eval(evals)
             model_log.plot_eval("runtime")
             train_timer.start()
+        batch_index += 1
+
+        if early_complete:
+            break
 
     train_timer.stop()
     train_time = train_timer.get_total_time()
-    print(f"[One epoch train complete] {train_time:.2f} s, {train_time / len(train_loader):.5f} s/iter")
+    print(f"[One epoch train complete] {train_time:.2f} s, {train_time / batch_index:.5f} s/iter")
 
     # update model log for one_epoch
     model_log.one_epoch()
@@ -113,41 +116,47 @@ def semi_supervised_train_one_epoch(
         targets = [{k: v.to(global_config.DEVICE) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
         loss_dict = student_model(images, targets)
         loss = sum_loss(loss_dict)
-        if not is_supervised:
-            loss = loss * unsupervised_weight
-        loss.backward()
 
-        optimizer.step()
-        optimizer.zero_grad()
-        ema_update(teacher_model, student_model, ema_beta)
-        lr_scheduler.step()
-
-        # training state
-        training_state = {"lr": optimizer.param_groups[0]['lr'], "losses": loss.item()}
-        for k, v in loss_dict.items():
-            training_state[k] = v.item()
-
-        # log the train state
+        # training log
+        lr = optimizer.param_groups[0]['lr']
         if model_log.iter_num % global_config.TRAIN_STATE_PRINT_FREQ == 0 or batch_index == 0 or batch_index + 1 == len(train_loader):
-            loss_log = f"[epoch: {model_log.epoch_num}, iter: {batch_index + 1}/{len(train_loader)}, total_iter: {model_log.iter_num}]"
-            for k, v in training_state.items():
-                loss_log += f" {k}: {v:.6f}"
+            loss_log = f"[epoch: {model_log.epoch_num+1}, iter: {batch_index + 1}/{len(train_loader)}, total_iter: {model_log.iter_num}]"
+            loss_log += f" labeled: {is_supervised}, lr: {lr:.6f}, loss: {loss: .6f}, weight: {1 if is_supervised else unsupervised_weight: .6f}"
+            for k, v in loss_dict.items():
+                loss_log += f", {k}: {v:.6f}"
             print(loss_log)
 
-        training_state["supervised"] = False
-        model_log.one_iter(training_state)
+        # model update
+        loss = loss if is_supervised else loss * unsupervised_weight
+        loss = loss / global_config.ACCUMULATION_STEPS
+        loss.backward()
+        need_step = (batch_index + 1) % 4 == 0 or batch_index + 1 == len(train_loader)
+        if need_step:
+            optimizer.step()
+            optimizer.zero_grad()
+            ema_update(teacher_model, student_model, ema_beta)
+            lr_scheduler.step()
+
+        # update model logs
+        model_log.one_iter({
+            "lr": lr,
+            "loss_dict": {k: v.item() for k, v in loss_dict.items()},
+            "full_supervised": False,
+            "labeled": is_supervised,
+            "weight": 1 if is_supervised else unsupervised_weight,
+            "step": need_step
+        })
 
         # evaluate the model
         if model_log.iter_num % global_config.EVAL_FREQ == 0:
             train_timer.stop()
             evals = {}
-            print("Student Model:")
+            print("\n[Evaluate Student Model]")
             evals["student"] = coco_eval.evaluate(student_model, valid_loader, device=global_config.DEVICE).coco_eval.stats
             student_model.train()
             if ema_beta < 1:
-                print("\nTeacher Model:")
+                print("[Evaluate Teacher Model]")
                 evals["teacher"] = coco_eval.evaluate(teacher_model, valid_loader, device=global_config.DEVICE).coco_eval.stats
-
             model_log.update_eval(evals)
             model_log.plot_eval("runtime")
             train_timer.start()
@@ -160,7 +169,7 @@ def semi_supervised_train_one_epoch(
     model_log.one_epoch()
 
 
-def save(student_model, teacher_model, train_config, optimizer, lr, model_log, save_folder, checkpoint_freq=None):
+def save(student_model, teacher_model, train_config, optimizer, lr, model_log, save_folder, set_checkpoint):
     print("Model Saving...")
     if not os.path.exists(save_folder):
         os.makedirs(save_folder)
@@ -178,9 +187,9 @@ def save(student_model, teacher_model, train_config, optimizer, lr, model_log, s
 
     torch.save(data, file_name)
 
-    if checkpoint_freq is not None and model_log.epoch_num % checkpoint_freq == 0:
+    if set_checkpoint:
         checkpoint_folder = os.path.join(save_folder, "check_point")
-        checkpoint_file = os.path.join(checkpoint_folder, f"{model_log.epoch_num}.pth")
+        checkpoint_file = os.path.join(checkpoint_folder, f"{model_log.epoch_num}epochs, {model_log.iter_num}iters.pth")
         if not os.path.exists(checkpoint_folder):
             os.makedirs(checkpoint_folder)
         shutil.copy(file_name, checkpoint_file)

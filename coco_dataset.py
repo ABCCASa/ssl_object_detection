@@ -7,12 +7,15 @@ import torch
 import random
 from torchvision.io import read_image
 from torchvision.tv_tensors import BoundingBoxes
+
+import global_config
 import plot
 from augmentation.custom_augmentation import image_cover
 import torchvision.transforms.v2.functional as F
 from torchvision.ops import boxes as box_ops
+from augmentation.reversible_augmentation import get_reversible_augmentation
 
-__all__ = ["CocoDetection", "CocoDataset", "PseudoLabelDataLoader", "CombineDataLoader"]
+__all__ = ["CocoDetection", "CocoDataset", "PseudoLabelDataset", "CombineDataLoader"]
 
 
 class CocoDetection(Dataset):
@@ -103,69 +106,67 @@ class CocoDataset(Dataset):
             return image, target
 
 
-class PseudoLabelDataLoader(Dataset):
-    def __init__(self, dataloader: DataLoader, transforms, model, device, threshold):
-        self.dataloader = dataloader
+class PseudoLabelDataset(Dataset):
+    def __init__(self, coco_dataset: CocoDataset, strong_transforms, model, device, threshold, decay=0.99):
+        self.coco_dataset = coco_dataset
         self.device = device
         self.model = model
         self.threshold = threshold
-        self.transforms = transforms
+        self.strong_transforms = strong_transforms
+        self.decay = decay
+
+        self.reversible_augmentation = get_reversible_augmentation()
+        self.history_targets = {}
+
+        self.time = 0
 
     def __len__(self):
-        return len(self.dataloader)
+        return len(self.coco_dataset)
 
-    def generate_data(self, raw_images):
-        self.model.eval()
-        raw_images = [img.to(self.device) for img in raw_images]
-        flip_images = [F.hflip(img) for img in raw_images]
-        with torch.no_grad():
-            raw_preds = self.model(raw_images)
-            flip_preds = self.model(flip_images)
-            out_images = []
-            out_targets = []
-            for raw_img, raw_pred, flip_pred in zip(raw_images, raw_preds, flip_preds):
-                image, target = self.post_process(raw_img, raw_pred, flip_pred)
-                out_images.append(image)
-                out_targets.append(target)
-        return out_images, out_targets
+    def target_fusion(self, idx, boxes, labels, scores):
+        if idx in self.history_targets.keys():
+            history_boxes, history_labels, history_scores = self.history_targets[idx]
+            history_scores *= self.decay
+            keep = history_scores >= self.threshold
+            history_boxes, history_labels, history_scores = history_boxes[keep], history_labels[keep], history_scores[keep]
 
-    def post_process(self, img, raw_pred, flip_pred):
-        with torch.no_grad():
-            _, height, width = F.get_dimensions(img)
-            flip_pred["boxes"][:, [0, 2]] = width - flip_pred["boxes"][:, [2, 0]]
-            boxes = torch.cat([raw_pred["boxes"], flip_pred["boxes"]], dim=0)
-            labels = torch.cat([raw_pred["labels"], flip_pred["labels"]], dim=0)
-            scores = torch.cat([raw_pred["scores"], flip_pred["scores"]], dim=0)
+            boxes = torch.cat([history_boxes, boxes], dim=0)
+            labels = torch.cat([history_labels, labels], dim=0)
+            scores = torch.cat([history_scores * self.decay, scores], dim=0)
 
             keep = box_ops.batched_nms(boxes, scores, labels, 0.5)
             boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
 
+        self.history_targets[idx] = (boxes.clone(), labels.clone(), scores.clone())
+        return boxes, labels, scores
+
+    def __getitem__(self, idx):
+        self.model.eval()
+        img, _ = self.coco_dataset[idx]
+        img = F.to_dtype(img, torch.float, scale=True)
+
+        with torch.no_grad():
+            aug_img, undo_action = self.reversible_augmentation.apply(img)
+            preds = self.model([aug_img.to(self.device)])[0]
+            boxes, labels, scores = preds["boxes"].cpu(), preds["labels"].cpu(), preds["scores"].cpu()
             keep = scores >= self.threshold
             boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
+
+            boxes = self.reversible_augmentation.undo(boxes, undo_action)
+            boxes, labels, scores = self.target_fusion(idx, boxes, labels, scores)
             target = {
                 "supervised": False,
                 "labels": labels,
-                "boxes": BoundingBoxes(boxes, format="XYXY", canvas_size=(height, width)),
+                "boxes": BoundingBoxes(boxes, format="XYXY", canvas_size=F.get_size(img)),
                 "scores": scores
             }
-            if self.transforms is not None:
-                img, target = self.transforms(img, target)
-            return img, target
 
-    class DataLoaderIter:
-        def __init__(self, loader):
-            self.iter = iter(loader.dataloader)
-            self.loader = loader
+            if idx % 1000 == 0:
+                plot.plot_data(img, target, global_config.CLASSES, "runtime/label",f"{idx}.png")
 
-        def __len__(self):
-            return len(self.iter)
+            img, target = self.strong_transforms(img, target)
 
-        def __next__(self):
-            images, _ = next(self.iter)
-            return self.loader.generate_data(images)
-
-    def __iter__(self):
-        return self.DataLoaderIter(self)
+        return img, target
 
 
 class CombineDataLoader:

@@ -23,7 +23,6 @@ def collate_mix(batch):
     return tuple(zip(*batch))
 
 
-
 def input_float(prompt, min_value: float = None, max_value: float = None):
     while True:
         content = input(prompt)

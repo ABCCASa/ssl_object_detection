@@ -50,12 +50,23 @@ class HorizontalFlipAugmentation(AugmentationBase):
         return boxes
 
 
+class ColorJitterAugmentation(AugmentationBase):
+    def __init__(
+        self,
+        brightness: Union[float, Tuple[float, float]] = 0.6,
+        contrast: Union[float, Tuple[float, float]] = 0.6,
+        saturation: Union[float, Tuple[float, float]] = 0.6,
+        hue: Union[float, Tuple[float, float]] = 0.1,
+    ):
+        self.jitter = v2.ColorJitter(contrast=contrast, saturation=saturation, hue=hue, brightness=brightness)
+
+    def apply(self, image: torch.Tensor):
+        image = self.jitter(image)
+        return image, None
+
+
 class ScaleJitterAugmentation(AugmentationBase):
-    def __init__(self,
-                 min_scale: float = 0.7,
-                 max_scale: float = 1.3,
-                 interpolation=F.InterpolationMode.BILINEAR,
-                 anti_alias=True):
+    def __init__(self, min_scale: float = 0.7, max_scale: float = 1.3, interpolation=F.InterpolationMode.BILINEAR, anti_alias=True):
         self.min_scale = min_scale
         self.max_scale = max_scale
         self.interpolation = interpolation
@@ -74,26 +85,11 @@ class ScaleJitterAugmentation(AugmentationBase):
         return boxes
 
 
-class ColorJitterAugmentation(AugmentationBase):
-    def __init__(
-        self,
-        brightness: Union[float, Tuple[float, float]] = 0.6,
-        contrast: Union[float, Tuple[float, float]] = 0.6,
-        saturation: Union[float, Tuple[float, float]] = 0.6,
-        hue: Union[float, Tuple[float, float]] = 0.1,
-    ):
-        self.jitter = v2.ColorJitter(contrast=contrast, saturation=saturation, hue=hue, brightness=brightness)
-
-    def apply(self, image: torch.Tensor):
-        image = self.jitter(image)
-        return image, None
-
-
 def get_reversible_augmentation():
     return AugmentationGroup(
         [
-            # ColorJitterAugmentation(),
+            ColorJitterAugmentation(0.2, 0.3, 0.3, 0.025),
             ScaleJitterAugmentation(),
-            # HorizontalFlipAugmentation()
+            HorizontalFlipAugmentation()
         ]
     )

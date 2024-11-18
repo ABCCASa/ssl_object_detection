@@ -2,9 +2,9 @@ import torchvision.transforms.v2.functional as F
 import torch
 from torchvision.tv_tensors import BoundingBoxes
 import random
+from typing import Any, Callable, Dict, List, Sequence, Tuple, Union
 
-
-__all__ = ["mix_up", "image_cover"]
+__all__ = ["mix_up", "image_cover", "RandomPepperNoise", "RandomGaussianNoise"]
 
 
 def pad(img, target, width: int, height: int):
@@ -65,5 +65,41 @@ def image_cover(img: torch.Tensor, scores, boxes, threshold):
 
     noise = torch.rand_like(img)
     return img * img_mask + noise * (1-img_mask)
+
+
+class RandomPepperNoise:
+    def __init__(self, p=0.5, density=0.05):
+        self.density = max(min(density, 1), 0)
+        self.p = p
+
+    def __call__(self, img: torch.Tensor, *params):
+        if random.random() < self.p:
+            img = img.clone()
+            _, height, width = F.get_dimensions(img)
+            mask = torch.rand(height, width)
+            half_density = self.density / 2
+            img[:, mask < half_density] = 0
+            img[:, mask > (1 - half_density)] = 255 if img.dtype == torch.uint8 else 1
+        return img, *params
+
+
+class RandomGaussianNoise:
+    def __init__(self, p=0.5, mean: float = 0.0, sigma: Tuple[float, float] = (0, 0.1), clip: bool = True):
+        if sigma[0] < 0 or sigma[1] < 0:
+            raise ValueError(f"Sigma should not less than 0, Got {sigma}")
+        self.p = p
+        self.mean = mean
+        self.sigma = sigma
+        self.clip = clip
+
+    def __call__(self, img: torch.Tensor, *params):
+        if random.random() < self.p:
+            if not img.is_floating_point():
+                raise ValueError(f"Image should be float dtype, got dtype={img.dtype}")
+            noise = self.mean + torch.randn_like(img) * random.uniform(self.sigma[0], self.sigma[1])
+            img = img + noise
+            if self.clip:
+                img = torch.clamp(img, 0, 1)
+        return img, *params
 
 

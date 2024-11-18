@@ -1,8 +1,11 @@
 import common_utils
 import os
 import json
+
+
 def get_default():
     return TrainConfig()
+
 
 class TrainConfig:
     def __init__(self, load_dir=None):
@@ -27,7 +30,7 @@ class TrainConfig:
         self.VALID_SAMPLE = common_utils.get_exist_dir("Please enter valid samples txt: ")
 
         # Semi Supervised Learning
-        self.SEMI_SUPERVISED_TRAIN_START = 100  # start semi-supervised learning are x epoch
+        self.SEMI_SUPERVISED_TRAIN_START = 1000000  # start semi-supervised learning after x iter supervised learning
         self.PSEUDO_LABEL_THRESHOLD = 0.8
         self.EMA_UPDATE_BETA = 0.999
         self.UNSUPERVISED_WEIGHT = 1
