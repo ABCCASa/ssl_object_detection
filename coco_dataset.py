@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 from typing import Any, Tuple, Union
 from pycocotools.coco import COCO
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 import torch
 import random
 from torchvision.io import read_image
@@ -10,7 +10,6 @@ from torchvision.tv_tensors import BoundingBoxes
 
 import global_config
 import plot
-from augmentation.custom_augmentation import image_cover
 import torchvision.transforms.v2.functional as F
 from torchvision.ops import boxes as box_ops
 from augmentation.reversible_augmentation import get_reversible_augmentation
@@ -114,11 +113,8 @@ class PseudoLabelDataset(Dataset):
         self.threshold = threshold
         self.strong_transforms = strong_transforms
         self.decay = decay
-
         self.reversible_augmentation = get_reversible_augmentation()
         self.history_targets = {}
-
-        self.time = 0
 
     def __len__(self):
         return len(self.coco_dataset)
@@ -127,12 +123,13 @@ class PseudoLabelDataset(Dataset):
         if idx in self.history_targets.keys():
             history_boxes, history_labels, history_scores = self.history_targets[idx]
             history_scores *= self.decay
-            keep = history_scores >= self.threshold
-            history_boxes, history_labels, history_scores = history_boxes[keep], history_labels[keep], history_scores[keep]
 
             boxes = torch.cat([history_boxes, boxes], dim=0)
             labels = torch.cat([history_labels, labels], dim=0)
-            scores = torch.cat([history_scores * self.decay, scores], dim=0)
+            scores = torch.cat([history_scores, scores], dim=0)
+
+            keep = scores >= self.threshold
+            boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
 
             keep = box_ops.batched_nms(boxes, scores, labels, 0.5)
             boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
@@ -149,10 +146,9 @@ class PseudoLabelDataset(Dataset):
             aug_img, undo_action = self.reversible_augmentation.apply(img)
             preds = self.model([aug_img.to(self.device)])[0]
             boxes, labels, scores = preds["boxes"].cpu(), preds["labels"].cpu(), preds["scores"].cpu()
+            boxes = self.reversible_augmentation.undo(boxes, undo_action)
             keep = scores >= self.threshold
             boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
-
-            boxes = self.reversible_augmentation.undo(boxes, undo_action)
             boxes, labels, scores = self.target_fusion(idx, boxes, labels, scores)
             target = {
                 "supervised": False,
@@ -160,9 +156,8 @@ class PseudoLabelDataset(Dataset):
                 "boxes": BoundingBoxes(boxes, format="XYXY", canvas_size=F.get_size(img)),
                 "scores": scores
             }
-
             if idx % 1000 == 0:
-                plot.plot_data(img, target, global_config.CLASSES, "runtime/label",f"{idx}.png")
+                plot.plot_data(img, target, global_config.CLASSES, "runtime/label", f"{idx}.png")
 
             img, target = self.strong_transforms(img, target)
 
