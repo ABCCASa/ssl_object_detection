@@ -72,7 +72,7 @@ def full_supervised_train_one_epoch(model: nn.Module, train_loader, valid_loader
         })
 
         # evaluate the model
-        if model_log.iter_num % global_config.EVAL_FREQ == 0:
+        if model_log.iter_num % global_config.SUPERVISED_EVAL_FREQ == 0:
             train_timer.stop()
             evals = dict()
             print("\n[Evaluate Model]")
@@ -148,7 +148,7 @@ def semi_supervised_train_one_epoch(
         })
 
         # evaluate the model
-        if model_log.iter_num % global_config.EVAL_FREQ == 0:
+        if model_log.iter_num % global_config.SEMI_SUPERVISED_EVAL_FREQ == 0:
             train_timer.stop()
             evals = {}
             print("\n[Evaluate Student Model]")

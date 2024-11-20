@@ -38,14 +38,15 @@ print()
 train_config.print_out()
 
 # create dataset and dataLoader
-coco_detection = global_config.get_coco_detection()
-labeled_dataset = CocoDataset(coco_detection, data_augmentation.get_transform_supervised(), train_config.LABELED_SAMPLE)
+coco_train_set = global_config.get_coco_detection_train()
+coco_valid_set = global_config.get_coco_detection_valid()
+labeled_dataset = CocoDataset(coco_train_set, data_augmentation.get_transform_supervised(), train_config.LABELED_SAMPLE)
 labeled_loader = DataLoader(labeled_dataset, batch_size=global_config.TRAIN_BATCH_SIZE, shuffle=True, collate_fn=common_utils.collate_fn)
-valid_dataset = CocoDataset(coco_detection, data_augmentation.get_transform_valid(), train_config.VALID_SAMPLE)
+valid_dataset = CocoDataset(coco_valid_set, data_augmentation.get_transform_valid(), train_config.VALID_SAMPLE)
 valid_loader = DataLoader(valid_dataset, batch_size=global_config.EVAL_BATCH_SIZE, shuffle=False, collate_fn=common_utils.collate_fn)
 
 # ssl data
-unlabeled_dataset = CocoDataset(coco_detection, data_augmentation.get_transform_unsupervised_weak(), train_config.UNLABELED_SAMPLE, image_only=True)
+unlabeled_dataset = CocoDataset(coco_train_set, data_augmentation.get_transform_unsupervised_weak(), train_config.UNLABELED_SAMPLE, image_only=True)
 pseudo_label_dataset = PseudoLabelDataset(unlabeled_dataset, data_augmentation.get_transform_unsupervised_strong(), teacher_model,
                                           global_config.DEVICE, train_config.PSEUDO_LABEL_THRESHOLD)
 pseudo_label_loader = DataLoader(pseudo_label_dataset, batch_size=global_config.TRAIN_BATCH_SIZE, shuffle=True, collate_fn=common_utils.collate_fn)
