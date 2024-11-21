@@ -109,7 +109,6 @@ def semi_supervised_train_one_epoch(
     student_model.train()
     train_timer = Timer()
     train_timer.start()
-    optimizer.zero_grad()
     for batch_index, (images, targets) in enumerate(train_loader):
         is_supervised = targets[0]["supervised"]
         images = list(image.to(global_config.DEVICE) for image in images)
