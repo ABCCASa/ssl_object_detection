@@ -91,9 +91,9 @@ def get_exist_dir(prompt):
     return content
 
 
-def get_valid_filename(prompt):
-    content = input(prompt)
+def get_valid_filename(prompt, baned_name=None):
+    content = input(prompt).strip()
     pattern = r'^[^\/\\:\*\?"<>|]+$'
-    while not re.match(pattern, content):
-        content = input("invalid file name, try again:")
+    while (baned_name is not None and content in baned_name) or not re.match(pattern, content):
+        content = input("invalid file name, try again:").strip()
     return content

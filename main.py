@@ -23,7 +23,7 @@ model_storage_folder = None
 if select_index >= 0:
     model_storage_folder = os.path.join(root_folder, model_names[select_index])
 else:
-    model_storage_folder = os.path.join(root_folder, common_utils.get_valid_filename("Please enter new model file name: "))
+    model_storage_folder = os.path.join(root_folder, common_utils.get_valid_filename("Please enter new model file name: ", model_names))
 
 
 # create and load model, optimizer and lr_scheduler
