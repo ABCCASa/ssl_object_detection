@@ -57,7 +57,7 @@ def full_supervised_train_one_epoch(model: nn.Module, train_loader, valid_loader
         # update learning rate
         loss = loss / global_config.ACCUMULATION_STEPS
         loss.backward()
-        need_step = (batch_index+1) % 4 == 0 or batch_index+1 == len(train_loader) or early_complete
+        need_step = (batch_index+1) % global_config.ACCUMULATION_STEPS == 0 or batch_index+1 == len(train_loader) or early_complete
         if need_step:
             optimizer.step()
             optimizer.zero_grad()
@@ -129,7 +129,7 @@ def semi_supervised_train_one_epoch(
         loss = loss if is_supervised else loss * unsupervised_weight
         loss = loss / global_config.ACCUMULATION_STEPS
         loss.backward()
-        need_step = (batch_index + 1) % 4 == 0 or batch_index + 1 == len(train_loader)
+        need_step = (batch_index + 1) % global_config.ACCUMULATION_STEPS == 0 or batch_index + 1 == len(train_loader)
         if need_step:
             optimizer.step()
             optimizer.zero_grad()
