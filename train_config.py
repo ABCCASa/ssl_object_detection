@@ -27,7 +27,7 @@ class TrainConfig:
                                                                1, 0.8)
         self.EMA_UPDATE_BETA = common_utils.input_float("ema beta (0.9999): ", 0, 1, 0.9999)
         self.UNSUPERVISED_WEIGHT = common_utils.input_float("unsupervised weight (1): ", 0, 100, 1)
-        self.PSEUDO_LABEL_DECAY = common_utils.input_float("unsupervised weight (1): ", 0, 1, 1)
+        self.PSEUDO_LABEL_DECAY = common_utils.input_float("pseudo label decay (1): ", 0, 1, 1)
 
     def print_out(self):
         print("Train Config:")

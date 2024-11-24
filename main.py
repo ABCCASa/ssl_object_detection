@@ -4,8 +4,6 @@ import common_utils
 from torch.utils.data import DataLoader
 from augmentation import data_augmentation
 from coco_dataset import CocoDataset, PseudoLabelDataset, CombineDataLoader
-import coco_eval
-import plot
 import torch
 import os
 from model_log import ModelLog
@@ -35,8 +33,6 @@ teacher_model = global_config.DETECTION_MODEL(num_classes=global_config.NUM_CLAS
 teacher_model.to(global_config.DEVICE)
 optimizer = torch.optim.SGD(student_model.parameters(), lr=5e-3, momentum=0.9, weight_decay=0.0005)
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.995)
-model_log: ModelLog
-train_config: TrainConfig
 model_log, train_config = engine.load(model_storage_folder, student_model, teacher_model, optimizer, lr_scheduler)
 print()
 train_config.print_out()
