@@ -13,62 +13,30 @@ class TrainConfig:
         if load_dir is not None:
             with open(load_dir) as file:
                 data = json.load(file)
-
-            self.LABELED_SAMPLE = data["LABELED_SAMPLE"]
-            self.UNLABELED_SAMPLE = data["UNLABELED_SAMPLE"]
-            self.VALID_SAMPLE = data["VALID_SAMPLE"]
-
-            self.SEMI_SUPERVISED_TRAIN_START = data["SEMI_SUPERVISED_TRAIN_START"]
-            self.PSEUDO_LABEL_THRESHOLD = data["PSEUDO_LABEL_THRESHOLD"]
-            self.EMA_UPDATE_BETA = data["EMA_UPDATE_BETA"]
-            self.UNSUPERVISED_WEIGHT = data["UNSUPERVISED_WEIGHT"]
+            for k, v in data.items():
+                setattr(self, k, v)
             return
 
         print("Train Config Init:")
-        self.LABELED_SAMPLE = common_utils.get_exist_dir("Please enter labeled samples txt: ")
-        self.UNLABELED_SAMPLE = common_utils.get_exist_dir("Please enter unlabeled samples txt: ")
-        self.VALID_SAMPLE = common_utils.get_exist_dir("Please enter valid samples txt: ")
-
-        # Semi Supervised Learning
-        self.SEMI_SUPERVISED_TRAIN_START = 1000000  # start semi-supervised learning after x iter supervised learning
-        self.PSEUDO_LABEL_THRESHOLD = 0.8
-        self.EMA_UPDATE_BETA = 0.999
-        self.UNSUPERVISED_WEIGHT = 1
-
-        print(f"SEMI_SUPERVISED_TRAIN_START = {self.SEMI_SUPERVISED_TRAIN_START}",
-              f"PSEUDO_LABEL_THRESHOLD = {self.PSEUDO_LABEL_THRESHOLD}",
-              f"EMA_UPDATE_BETA = {self.EMA_UPDATE_BETA}",
-              f"UNSUPERVISED_WEIGHT = {self.UNSUPERVISED_WEIGHT}",
-              sep="\n")
-        if input("Enter Y to change the default value: ").lower() == "y":
-            self.SEMI_SUPERVISED_TRAIN_START = common_utils.input_int("Please enter semi -supervised start epoch: ", 1)
-            self.PSEUDO_LABEL_THRESHOLD = common_utils.input_float("please enter pseudo label threshold: ", 0, 1)
-            self.EMA_UPDATE_BETA = common_utils.input_float("please enter ema beta: ", 0, 1)
-            self.UNSUPERVISED_WEIGHT = common_utils.input_float("please enter unsupervised weight: ", 0, 100)
+        self.LABELED_SAMPLE = common_utils.get_exist_dir("labeled samples txt: ")
+        self.UNLABELED_SAMPLE = common_utils.get_exist_dir("unlabeled samples txt: ")
+        self.VALID_SAMPLE = common_utils.get_exist_dir("enter valid samples txt: ")
+        self.SEMI_SUPERVISED_TRAIN_START = common_utils.input_int("semi-supervised start epoch (200000): ",
+                                                                  1, default_value=200000)
+        self.PSEUDO_LABEL_THRESHOLD = common_utils.input_float("pseudo label threshold (0.8): ", 0,
+                                                               1, 0.8)
+        self.EMA_UPDATE_BETA = common_utils.input_float("ema beta (0.9999): ", 0, 1, 0.9999)
+        self.UNSUPERVISED_WEIGHT = common_utils.input_float("unsupervised weight (1): ", 0, 100, 1)
+        self.PSEUDO_LABEL_DECAY = common_utils.input_float("unsupervised weight (1): ", 0, 1, 1)
 
     def print_out(self):
-        print("Train Config:",
-              f"LABELED_SAMPLE = {self.LABELED_SAMPLE}",
-              f"UNLABELED_SAMPLE = {self.UNLABELED_SAMPLE}",
-              f"VALID_SAMPLE = {self.VALID_SAMPLE}",
-              f"SEMI_SUPERVISED_TRAIN_START = {self.SEMI_SUPERVISED_TRAIN_START}",
-              f"PSEUDO_LABEL_THRESHOLD = {self.PSEUDO_LABEL_THRESHOLD}",
-              f"EMA_UPDATE_BETA = {self.EMA_UPDATE_BETA}",
-              f"UNSUPERVISED_WEIGHT = {self.UNSUPERVISED_WEIGHT}",
-              sep="\n")
-
+        print("Train Config:")
+        for k, v in self.__dict__.items():
+            print(f"{k} = {v}")
 
     def save(self, save_folder):
-        config = {
-            "LABELED_SAMPLE":self.LABELED_SAMPLE,
-            "UNLABELED_SAMPLE":self.UNLABELED_SAMPLE,
-            "VALID_SAMPLE": self.VALID_SAMPLE,
-            "SEMI_SUPERVISED_TRAIN_START":self.SEMI_SUPERVISED_TRAIN_START,
-            "PSEUDO_LABEL_THRESHOLD": self.PSEUDO_LABEL_THRESHOLD,
-            "EMA_UPDATE_BETA": self.EMA_UPDATE_BETA,
-            "UNSUPERVISED_WEIGHT": self.UNSUPERVISED_WEIGHT
-        }
+
         with open(save_folder, 'w', encoding='utf-8') as file:
-            json.dump(config, file)
+            json.dump(self.__dict__, file)
 
 

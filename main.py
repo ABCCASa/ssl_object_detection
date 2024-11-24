@@ -8,6 +8,8 @@ import coco_eval
 import plot
 import torch
 import os
+from model_log import ModelLog
+from train_config import TrainConfig
 
 # model select
 root_folder = global_config.MODEL_STORAGE
@@ -33,6 +35,8 @@ teacher_model = global_config.DETECTION_MODEL(num_classes=global_config.NUM_CLAS
 teacher_model.to(global_config.DEVICE)
 optimizer = torch.optim.SGD(student_model.parameters(), lr=5e-3, momentum=0.9, weight_decay=0.0005)
 lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.995)
+model_log: ModelLog
+train_config: TrainConfig
 model_log, train_config = engine.load(model_storage_folder, student_model, teacher_model, optimizer, lr_scheduler)
 print()
 train_config.print_out()
@@ -48,7 +52,7 @@ valid_loader = DataLoader(valid_dataset, batch_size=global_config.EVAL_BATCH_SIZ
 # ssl data
 unlabeled_dataset = CocoDataset(coco_train_set, data_augmentation.get_transform_unsupervised_weak(), train_config.UNLABELED_SAMPLE, image_only=True)
 pseudo_label_dataset = PseudoLabelDataset(unlabeled_dataset, data_augmentation.get_transform_unsupervised_strong(), teacher_model,
-                                          global_config.DEVICE, train_config.PSEUDO_LABEL_THRESHOLD)
+                                          global_config.DEVICE, train_config.PSEUDO_LABEL_THRESHOLD, train_config.PSEUDO_LABEL_DECAY)
 pseudo_label_loader = DataLoader(pseudo_label_dataset, batch_size=global_config.TRAIN_BATCH_SIZE, shuffle=True, collate_fn=common_utils.collate_fn)
 ssl_train_loader = CombineDataLoader(labeled_loader, pseudo_label_loader)
 

@@ -7,8 +7,8 @@ DETECTION_MODEL = fasterrcnn_resnet50_fpn_v2
 
 DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
-TRAIN_BATCH_SIZE = 2
-ACCUMULATION_STEPS = 2
+TRAIN_BATCH_SIZE = 4
+ACCUMULATION_STEPS = 1
 
 
 EVAL_BATCH_SIZE = 6
