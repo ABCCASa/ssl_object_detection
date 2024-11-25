@@ -8,18 +8,16 @@ DETECTION_MODEL = fasterrcnn_resnet50_fpn_v2
 DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
 TRAIN_BATCH_SIZE = 4
-ACCUMULATION_STEPS = 1
-
+ACCUMULATION_STEPS = 2
 
 EVAL_BATCH_SIZE = 6
 CHECKPOINT_FREQ = 50  # set checkpoint every x epochs
 
-
-TRAIN_STATE_PRINT_FREQ = 250  # print train state every x iters
-SUPERVISED_EVAL_FREQ = 5000  # eval every x iters
+TRAIN_STATE_PRINT_FREQ = 500  # print train state every x iters
+SUPERVISED_EVAL_FREQ = 2000  # eval every x iters
 SEMI_SUPERVISED_EVAL_FREQ = 2000  # eval every x iters
 
-MODEL_STORAGE = "model_storage"  # the folder for model saving
+MODEL_STORAGE = "../autodl-fs/model_storage"  # the folder for model saving
 
 # Coco2014 Dataset
 CLASSES = ['background', 'person', 'bicycle', 'car', 'motorcycle', 'airplane', 'bus', 'train', 'truck', 'boat', 'traffic light', 'fire hydrant',
