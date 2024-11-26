@@ -13,7 +13,7 @@ import plot
 import torchvision.transforms.v2.functional as F
 from torchvision.ops import boxes as box_ops
 from augmentation.reversible_augmentation import get_reversible_augmentation
-
+from torch import nn
 __all__ = ["CocoDetection", "CocoDataset", "PseudoLabelDataset", "CombineDataLoader"]
 
 
@@ -32,6 +32,11 @@ class CocoDetection(Dataset):
     def get_target(self, index):
         id = self.ids[index]
         return self._load_target_with_id(id)
+
+    def get_empty_target(self, index):
+        id = self.ids[index]
+        target = {"supervised": False,  "image_id": id}
+        return target
 
     def get_file_name(self, index):
         id = self.ids[index]
@@ -95,9 +100,10 @@ class CocoDataset(Dataset):
         id = self.ids[index]
         if self.image_only:
             image = self.coco_detection.get_image(id)
+            target = self.coco_detection.get_empty_target(id)
             if self.transforms is not None:
                 image = self.transforms(image)
-            return image, None
+            return image, target
         else:
             image, target = self.coco_detection[id]
             if self.transforms is not None:
@@ -106,80 +112,57 @@ class CocoDataset(Dataset):
 
 
 class PseudoLabelDataset(Dataset):
-    def __init__(self, coco_dataset: CocoDataset, strong_transforms, model, device, threshold, mode="fusion"):
+    def __init__(self, coco_dataset: CocoDataset, threshold, decay=0.99):
         self.coco_dataset = coco_dataset
-        self.device = device
-        self.model = model
         self.threshold = threshold
-        self.strong_transforms = strong_transforms
-        self.reversible_augmentation = get_reversible_augmentation()
         self.history_targets = {}
-        if mode not in ["fusion", "once", "real_time"]:
-            raise ValueError('mode value can only be "fusion", "once" or "real_time"')
-        self.mode = mode
+        self.is_init = False
+        self.decay = decay
 
     def __len__(self):
         return len(self.coco_dataset)
 
-    def set_history(self, idx, boxes, labels, scores):
-        self.history_targets[idx] = (boxes.clone(), labels.clone(), scores.clone())
+    def init(self, model: nn.Module, device):
+        with torch.no_grad():
+            model.eval()
+            if self.is_init:
+                return
+            self.is_init = True
+            for img, target in self.coco_dataset:
+                img = F.to_dtype(img, torch.float, scale=True)
+                id = target["image_id"]
+                target = model([img.to(device)])[0]
+                self.update_fusion(id, target)
 
-    def history_fusion(self, idx, boxes, labels, scores):
-        if idx in self.history_targets.keys():
-            history_boxes, history_labels, history_scores = self.history_targets[idx]
-
+    def update_fusion(self, id, target):
+        boxes = target["boxes"].detach().cpu()
+        labels = target["labels"].detach().cpu()
+        scores = target["scores"].detach().cpu()
+        if id in self.history_targets.keys():
+            history_boxes, history_labels, history_scores = self.history_targets[id]
+            history_scores = history_scores * self.decay
             boxes = torch.cat([history_boxes, boxes], dim=0)
             labels = torch.cat([history_labels, labels], dim=0)
             scores = torch.cat([history_scores, scores], dim=0)
 
             keep = box_ops.batched_nms(boxes, scores, labels, 0.5)
             boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
-        self.history_targets[idx] = (boxes.clone(), labels.clone(), scores.clone())
+
+        keep = scores >= self.threshold
+        boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
+        self.history_targets[id] = (boxes.clone(), labels.clone(), scores.clone())
         return boxes, labels, scores
 
-    def have_history(self, idx):
-        return idx in self.history_targets.keys()
-
-    def get_history(self, idx):
-        if idx in self.history_targets.keys():
-            history_boxes, history_labels, history_scores, fusion_count = self.history_targets[idx]
-            return history_boxes, history_labels, history_scores
-
-    def generate_pseudo_label(self, img):
-        self.model.eval()
-        with torch.no_grad():
-            aug_img, undo_action = self.reversible_augmentation.apply(img)
-            preds = self.model([aug_img.to(self.device)])[0]
-            boxes, labels, scores = preds["boxes"].cpu(), preds["labels"].cpu(), preds["scores"].cpu()
-            boxes = self.reversible_augmentation.undo(boxes, undo_action)
-            keep = scores >= self.threshold
-            boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
-            return boxes, labels, scores
-
     def __getitem__(self, idx):
-        self.model.eval()
-        img, _ = self.coco_dataset[idx]
+        img, target = self.coco_dataset[idx]
         img = F.to_dtype(img, torch.float, scale=True)
-        if self.mode == "once":
-            if self.have_history(idx):
-                boxes, labels, scores = self.get_history(img)
-            else:
-                boxes, labels, scores = self.generate_pseudo_label(img)
-                self.set_history(idx, boxes, labels, scores)
-        else:
-            boxes, labels, scores = self.generate_pseudo_label(img)
-            if self.mode == "fusion":
-                boxes, labels, scores = self.history_fusion(idx, boxes, labels, scores)
-
-        target = {
-                "supervised": False,
-                "labels": labels,
-                "boxes": BoundingBoxes(boxes, format="XYXY", canvas_size=F.get_size(img)),
-                "scores": scores
-            }
+        id = target["image_id"]
+        boxes, labels, scores = self.history_targets[id]
+        target["labels"] = labels.clone()
+        target["scores"] = scores.clone()
+        target["boxes"] = BoundingBoxes(boxes.clone(), format="XYXY", canvas_size=F.get_size(img))
         if idx % 1000 == 0:
-            plot.plot_data(img, target, global_config.CLASSES, "runtime/label", f"{idx}.png")
-        img, target = self.strong_transforms(img, target)
+            plot.plot_data(img, target, global_config.CLASSES, "runtime/ssss", f"{id}.png")
         return img, target
 
 

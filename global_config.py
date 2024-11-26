@@ -1,5 +1,5 @@
 import torch
-from torchvision.models.detection.faster_rcnn import fasterrcnn_resnet50_fpn_v2
+from detection_model import fasterrcnn_resnet50_fpn_v2
 from coco_dataset import CocoDetection
 
 

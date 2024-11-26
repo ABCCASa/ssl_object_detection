@@ -1,14 +1,14 @@
 import torch
 from torch import Tensor
-import torchvision.transforms.functional as F
+import torchvision.transforms.v2.functional as F
 import torchvision.transforms.v2 as v2
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple, Union, Dict
 import random
 
 
 class AugmentationBase:
-    def apply(self, image: Tensor):
-        return image, None
+    def apply(self, image: Tensor, boxes: Tensor):
+        return image, boxes, None
 
     def undo(self, boxes: Tensor, undo_action):
         return boxes
@@ -18,12 +18,12 @@ class AugmentationGroup(AugmentationBase):
     def __init__(self, augmentations: List[AugmentationBase]):
         self.augmentations = augmentations
 
-    def apply(self, image: Tensor):
+    def apply(self, image: Tensor, boxes: Tensor):
         undo_actions = []
         for aug in self.augmentations:
-            image, undo_action = aug.apply(image)
+            image, boxes, undo_action = aug.apply(image, boxes)
             undo_actions.append(undo_action)
-        return image, undo_actions
+        return image, boxes, undo_actions
 
     def undo(self, boxes: Tensor, undo_actions: List):
         if undo_actions is not None:
@@ -36,12 +36,13 @@ class HorizontalFlipAugmentation(AugmentationBase):
     def __init__(self, p=0.5):
         self.p = p
 
-    def apply(self, image: Tensor):
+    def apply(self, image: Tensor, boxes: Tensor):
         if random.random() < self.p:
             _, _, width = F.get_dimensions(image)
             image = F.hflip(image)
-            return image, width
-        return image, None
+            boxes[:, [0, 2]] = width - boxes[:, [2, 0]]
+            return image, boxes, width
+        return image, boxes, None
 
     def undo(self, boxes: Tensor, undo_action: Optional[int]):
         if undo_action is not None:
@@ -53,16 +54,17 @@ class HorizontalFlipAugmentation(AugmentationBase):
 class ColorJitterAugmentation(AugmentationBase):
     def __init__(
         self,
-        brightness: Union[float, Tuple[float, float]] = 0.6,
-        contrast: Union[float, Tuple[float, float]] = 0.6,
-        saturation: Union[float, Tuple[float, float]] = 0.6,
-        hue: Union[float, Tuple[float, float]] = 0.1,
+        brightness: Union[float, Tuple[float, float]] = (0.875, 1.125),
+        contrast: Union[float, Tuple[float, float]] = (0.5, 1.5),
+        saturation: Union[float, Tuple[float, float]] = (0.5, 1.5),
+        hue: Union[float, Tuple[float, float]] = (-0.05, 0.05),
+        p=0.5
     ):
-        self.jitter = v2.ColorJitter(contrast=contrast, saturation=saturation, hue=hue, brightness=brightness)
+        self.jitter = v2.RandomPhotometricDistort(p=p, contrast=contrast, saturation=saturation, hue=hue, brightness=brightness)
 
-    def apply(self, image: torch.Tensor):
+    def apply(self, image: torch.Tensor, boxes: Tensor):
         image = self.jitter(image)
-        return image, None
+        return image, boxes, None
 
 
 class ScaleJitterAugmentation(AugmentationBase):
@@ -72,13 +74,14 @@ class ScaleJitterAugmentation(AugmentationBase):
         self.interpolation = interpolation
         self.anti_alias = anti_alias
 
-    def apply(self, image: torch.Tensor):
+    def apply(self, image: torch.Tensor, boxes: Tensor):
         chanel, height, width = F.get_dimensions(image)
         scale = random.uniform(self.min_scale, self.max_scale)
         new_height = int(height*scale)
         new_width = int(width*scale)
         image = F.resize(image, [new_height, new_width], interpolation=self.interpolation, antialias=self.anti_alias)
-        return image, scale
+        boxes = boxes * scale
+        return image, boxes, scale
 
     def undo(self, boxes: Tensor, undo_action: float):
         boxes /= undo_action
@@ -88,7 +91,7 @@ class ScaleJitterAugmentation(AugmentationBase):
 def get_reversible_augmentation():
     return AugmentationGroup(
         [
-            ColorJitterAugmentation(0.2, 0.3, 0.3, 0.025),
+            ColorJitterAugmentation(),
             ScaleJitterAugmentation(),
             HorizontalFlipAugmentation()
         ]

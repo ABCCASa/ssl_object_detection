@@ -1,7 +1,5 @@
-import math
 import coco_eval
 import global_config
-import plot
 from model_log import ModelLog
 import os.path
 import shutil
@@ -10,8 +8,7 @@ from torch import Tensor
 import torch.nn as nn
 from tools.timer import Timer
 from train_config import TrainConfig
-import json
-
+from augmentation.reversible_augmentation import get_reversible_augmentation
 
 def ema_update(m1: nn.Module, m2: nn.Module, beta: float):
     if not (0 <= beta <= 1):
@@ -101,6 +98,7 @@ def semi_supervised_train_one_epoch(
         valid_loader,
         optimizer,
         lr_scheduler,
+        fusion_function,
         model_log: ModelLog,
         train_config: TrainConfig
 ):
@@ -113,7 +111,12 @@ def semi_supervised_train_one_epoch(
         is_supervised = targets[0]["supervised"]
         images = list(image.to(global_config.DEVICE) for image in images)
         targets = [{k: v.to(global_config.DEVICE) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
-        loss_dict = student_model(images, targets)
+
+        if is_supervised:
+            loss_dict = ssl_labeled(student_model, images, targets)
+        else:
+            loss_dict = ssl_unlabeled(student_model, images, targets, fusion_function)
+
         loss = sum_loss(loss_dict)
 
         # training log
@@ -166,6 +169,33 @@ def semi_supervised_train_one_epoch(
 
     # update model log for one_epoch
     model_log.one_epoch()
+
+
+def ssl_labeled(model, images, targets):
+    model.set_ssl_mode(False)
+    loss_dict = model(images, targets)
+    return loss_dict
+
+
+reversible_augmentation = get_reversible_augmentation()
+
+
+def ssl_unlabeled(model, images, targets, fusion_function):
+    model.set_ssl_mode(True)
+    undos = []
+    ids = []
+    raw_images = []
+    for i in range(len(images)):
+        raw_images.append(images[i])
+        images[i], targets[i]["boxes"], undo = reversible_augmentation.apply(images[i], targets[i]["boxes"])
+        undos.append(undo)
+        ids.append(targets[i]["image_id"])
+    detections, losses = model(images, targets)
+    for id, target, undo, in zip(ids, detections, undos):
+        target["boxes"] = reversible_augmentation.undo(target["boxes"], undo)
+        fusion_function(id, target)
+    model.set_ssl_mode(False)
+    return losses
 
 
 def save(student_model, teacher_model, train_config, optimizer, lr, model_log, save_folder, set_checkpoint):
