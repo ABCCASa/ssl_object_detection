@@ -142,7 +142,7 @@ class PseudoLabelDataset(Dataset):
 
     def get_history(self, idx):
         if idx in self.history_targets.keys():
-            history_boxes, history_labels, history_scores, fusion_count = self.history_targets[idx]
+            history_boxes, history_labels, history_scores = self.history_targets[idx]
             return history_boxes, history_labels, history_scores
 
     def generate_pseudo_label(self, img):
@@ -162,7 +162,7 @@ class PseudoLabelDataset(Dataset):
         img = F.to_dtype(img, torch.float, scale=True)
         if self.mode == "once":
             if self.have_history(idx):
-                boxes, labels, scores = self.get_history(img)
+                boxes, labels, scores = self.get_history(idx)
             else:
                 boxes, labels, scores = self.generate_pseudo_label(img)
                 self.set_history(idx, boxes, labels, scores)
