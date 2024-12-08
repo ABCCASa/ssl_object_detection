@@ -1,2 +1,1 @@
 from .faster_rcnn_model import fasterrcnn_resnet50_fpn_v2 as fasterrcnn_resnet50_fpn_v2
-from .retinanet_model import retinanet_resnet50_fpn_v2 as retinanet_resnet50_fpn_v2

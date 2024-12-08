@@ -1,5 +1,6 @@
 import coco_eval
 import global_config
+import plot
 from model_log import ModelLog
 import os.path
 import shutil
@@ -9,6 +10,7 @@ import torch.nn as nn
 from tools.timer import Timer
 from train_config import TrainConfig
 from augmentation.reversible_augmentation import get_reversible_augmentation
+
 
 def ema_update(m1: nn.Module, m2: nn.Module, beta: float):
     if not (0 <= beta <= 1):
@@ -107,7 +109,9 @@ def semi_supervised_train_one_epoch(
     student_model.train()
     train_timer = Timer()
     train_timer.start()
-    for batch_index, (images, targets) in enumerate(train_loader):
+    batch_index = 0
+    for images, targets in train_loader:
+        early_complete = model_log.iter_num + 1 >= train_config.SEMI_SUPERVISED_TRAIN_END
         is_supervised = targets[0]["supervised"]
         images = list(image.to(global_config.DEVICE) for image in images)
         targets = [{k: v.to(global_config.DEVICE) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
@@ -115,7 +119,7 @@ def semi_supervised_train_one_epoch(
         if is_supervised:
             loss_dict = ssl_labeled(student_model, images, targets)
         else:
-            loss_dict = ssl_unlabeled(student_model, images, targets, fusion_function)
+            loss_dict = ssl_unlabeled(student_model, images, targets, fusion_function, train_config.FUSE_COUNT)
 
         loss = sum_loss(loss_dict)
 
@@ -132,7 +136,7 @@ def semi_supervised_train_one_epoch(
         loss = loss if is_supervised else loss * unsupervised_weight
         loss = loss / global_config.ACCUMULATION_STEPS
         loss.backward()
-        need_step = (batch_index + 1) % global_config.ACCUMULATION_STEPS == 0 or batch_index + 1 == len(train_loader)
+        need_step = (batch_index + 1) % global_config.ACCUMULATION_STEPS == 0 or batch_index + 1 == len(train_loader) or early_complete
         if need_step:
             optimizer.step()
             optimizer.zero_grad()
@@ -162,6 +166,9 @@ def semi_supervised_train_one_epoch(
             model_log.update_eval(evals)
             model_log.plot_eval("runtime")
             train_timer.start()
+        batch_index += 1
+        if early_complete:
+            break
 
     train_timer.stop()
     train_time = train_timer.get_total_time()
@@ -180,16 +187,19 @@ def ssl_labeled(model, images, targets):
 reversible_augmentation = get_reversible_augmentation()
 
 
-def ssl_unlabeled(model, images, targets, fusion_function):
+def ssl_unlabeled(model, images, targets, fusion_function, max_fuse_count):
     model.set_ssl_mode(True)
     undos = []
     ids = []
     raw_images = []
     for i in range(len(images)):
         raw_images.append(images[i])
-        images[i], targets[i]["boxes"], undo = reversible_augmentation.apply(images[i], targets[i]["boxes"])
+        intensity = min(targets[i]["fuse_count"] / max_fuse_count, 1)
+        images[i], targets[i]["boxes"], undo = reversible_augmentation.apply(images[i], targets[i]["boxes"], intensity)
         undos.append(undo)
         ids.append(targets[i]["image_id"])
+
+        plot.plot_data(images[i], targets[i], global_config.CLASSES, "runtime", f"{ids[i]}.png")
     detections, losses = model(images, targets)
     for id, target, undo, in zip(ids, detections, undos):
         target["boxes"] = reversible_augmentation.undo(target["boxes"], undo)

@@ -1,13 +1,14 @@
 import torch
+import torchvision.models.detection
+
 from detection_model import fasterrcnn_resnet50_fpn_v2
 from coco_dataset import CocoDetection
-
 
 DETECTION_MODEL = fasterrcnn_resnet50_fpn_v2
 
 DEVICE = torch.device('cuda:0') if torch.cuda.is_available() else torch.device('cpu')
 
-TRAIN_BATCH_SIZE = 4
+TRAIN_BATCH_SIZE = 1
 ACCUMULATION_STEPS = 2
 
 EVAL_BATCH_SIZE = 6

@@ -29,8 +29,8 @@ def mix_up(data1, data2):
     height = max(height1, height2)
     width = max(width1, width2)
 
-    img1, target1 = pad(img1, target1,width, height)
-    img2, target2 = pad(img2, target2,width, height)
+    img1, target1 = pad(img1, target1, width, height)
+    img2, target2 = pad(img2, target2, width, height)
 
     img = img1 * 0.5 + img2 * 0.5
     target = {

@@ -6,6 +6,7 @@ from torch import nn, Tensor
 from torchvision.models.detection.image_list import ImageList
 from torchvision.models.detection.transform import resize_boxes, _resize_image_and_masks
 
+
 class GeneralizedRCNNTransform(nn.Module):
     """
     Performs input / target transformation before feeding the data to a GeneralizedRCNN

@@ -7,7 +7,7 @@ import torch
 import random
 from torchvision.io import read_image
 from torchvision.tv_tensors import BoundingBoxes
-
+import soft_nms
 import global_config
 import plot
 import torchvision.transforms.v2.functional as F
@@ -35,7 +35,8 @@ class CocoDetection(Dataset):
 
     def get_empty_target(self, index):
         id = self.ids[index]
-        target = {"supervised": False,  "image_id": id}
+        coco_annotation = self.coco.loadAnns(self.coco.getAnnIds(id))
+        target = {"supervised": False,  "image_id": id, "box_count": len(coco_annotation)}
         return target
 
     def get_file_name(self, index):
@@ -112,11 +113,12 @@ class CocoDataset(Dataset):
 
 
 class PseudoLabelDataset(Dataset):
-    def __init__(self, coco_dataset: CocoDataset, threshold, decay=0.99):
+    def __init__(self, coco_dataset: CocoDataset, threshold, max_fuse_count=5, decay=1):
         self.coco_dataset = coco_dataset
         self.threshold = threshold
         self.history_targets = {}
         self.is_init = False
+        self.max_fuse_count = max_fuse_count
         self.decay = decay
 
     def __len__(self):
@@ -125,6 +127,7 @@ class PseudoLabelDataset(Dataset):
     def init(self, model: nn.Module, device):
         with torch.no_grad():
             model.eval()
+            model.set_ssl_mode(True)
             if self.is_init:
                 return
             self.is_init = True
@@ -133,34 +136,44 @@ class PseudoLabelDataset(Dataset):
                 id = target["image_id"]
                 target = model([img.to(device)])[0]
                 self.update_fusion(id, target)
+            model.set_ssl_mode(False)
 
     def update_fusion(self, id, target):
         boxes = target["boxes"].detach().cpu()
         labels = target["labels"].detach().cpu()
         scores = target["scores"].detach().cpu()
+        fuse_count = 0
         if id in self.history_targets.keys():
-            history_boxes, history_labels, history_scores = self.history_targets[id]
-            history_scores = history_scores * self.decay
+            history_boxes, history_labels, history_scores, fuse_count = self.history_targets[id]
             boxes = torch.cat([history_boxes, boxes], dim=0)
             labels = torch.cat([history_labels, labels], dim=0)
-            scores = torch.cat([history_scores, scores], dim=0)
-
-            keep = box_ops.batched_nms(boxes, scores, labels, 0.5)
-            boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
+            scores = torch.cat([history_scores * self.decay, scores], dim=0)
+            #keep = box_ops.batched_nms(boxes, scores, labels, 0.5)
+            #boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
 
         keep = scores >= self.threshold
         boxes, labels, scores = boxes[keep], labels[keep], scores[keep]
-        self.history_targets[id] = (boxes.clone(), labels.clone(), scores.clone())
-        return boxes, labels, scores
+        fuse_count += 1
+        self.history_targets[id] = (boxes.clone(), labels.clone(), scores.clone(), fuse_count)
+
+    def get_labels(self, id):
+        boxes, labels, scores, fuse_count = self.history_targets[id]
+        return boxes.clone(), labels.clone(), scores.clone(), fuse_count
 
     def __getitem__(self, idx):
         img, target = self.coco_dataset[idx]
         img = F.to_dtype(img, torch.float, scale=True)
         id = target["image_id"]
-        boxes, labels, scores = self.history_targets[id]
-        target["labels"] = labels.clone()
-        target["scores"] = scores.clone()
-        target["boxes"] = BoundingBoxes(boxes.clone(), format="XYXY", canvas_size=F.get_size(img))
+        boxes, labels, scores, fuse_count = self.get_labels(id)
+        boxes, scores, labels = soft_nms.batched_soft_nms(boxes, scores, labels, 0.55)
+
+        with open("runtime/log_1/log.txt", "a") as file:
+            file.write(f"{fuse_count} {target['box_count']} {len(boxes)}\n")
+
+        target["labels"] = labels
+        target["boxes"] = BoundingBoxes(boxes, format="XYXY", canvas_size=F.get_size(img))
+        target["scores"] = scores
+        target["fuse_count"] = fuse_count
         if idx % 1000 == 0:
             plot.plot_data(img, target, global_config.CLASSES, "runtime/ssss", f"{id}.png")
         return img, target

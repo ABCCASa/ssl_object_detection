@@ -2,12 +2,12 @@ import engine
 import global_config
 import common_utils
 from torch.utils.data import DataLoader
+import plot
 from augmentation import data_augmentation
 from coco_dataset import CocoDataset, PseudoLabelDataset, CombineDataLoader
 import torch
 import os
-from model_log import ModelLog
-from train_config import TrainConfig
+
 
 # model select
 root_folder = global_config.MODEL_STORAGE
@@ -47,7 +47,7 @@ valid_loader = DataLoader(valid_dataset, batch_size=global_config.EVAL_BATCH_SIZ
 
 # ssl data
 unlabeled_dataset = CocoDataset(coco_train_set, None, train_config.UNLABELED_SAMPLE, image_only=True)
-pseudo_label_dataset = PseudoLabelDataset(unlabeled_dataset, train_config.PSEUDO_LABEL_THRESHOLD)
+pseudo_label_dataset = PseudoLabelDataset(unlabeled_dataset, train_config.PSEUDO_LABEL_THRESHOLD, train_config.FUSE_COUNT, train_config.PSEUDO_LABEL_DECAY)
 pseudo_label_loader = DataLoader(pseudo_label_dataset, batch_size=global_config.TRAIN_BATCH_SIZE, shuffle=True, collate_fn=common_utils.collate_fn)
 ssl_train_loader = CombineDataLoader(labeled_loader, pseudo_label_loader)
 
@@ -64,7 +64,7 @@ while True:
     if model_log.iter_num < train_config.SEMI_SUPERVISED_TRAIN_START:
         engine.full_supervised_train_one_epoch(student_model, labeled_loader, valid_loader, optimizer, lr_scheduler, model_log, train_config)
         set_check_point = model_log.epoch_num % global_config.CHECKPOINT_FREQ == 0 or model_log.iter_num == train_config.SEMI_SUPERVISED_TRAIN_START
-    else:
+    elif model_log.iter_num < train_config.SEMI_SUPERVISED_TRAIN_END:
         if not model_log.get_ssl_init():
             model_log.set_ssl_init()
             teacher_model.load_state_dict(student_model.state_dict())
@@ -73,6 +73,8 @@ while True:
         engine.semi_supervised_train_one_epoch(student_model, teacher_model, ssl_train_loader, valid_loader, optimizer, lr_scheduler,
                                                pseudo_label_dataset.update_fusion, model_log, train_config)
 
-        set_check_point = model_log.epoch_num % global_config.CHECKPOINT_FREQ == 0
+        set_check_point = model_log.epoch_num % global_config.CHECKPOINT_FREQ == 0 or model_log.iter_num == train_config.SEMI_SUPERVISED_TRAIN_END
+    else:
+        break
     engine.save(student_model, teacher_model, train_config, optimizer, lr_scheduler, model_log, model_storage_folder, set_check_point)
 

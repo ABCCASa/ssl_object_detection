@@ -1,7 +1,5 @@
 from torchvision.transforms import v2 as T
 import torch
-from .custom_augmentation import RandomPepperNoise, RandomGaussianNoise
-
 
 def labels_getter(*inputs):
     target = inputs[0][1]
@@ -27,24 +25,6 @@ def get_transform_unsupervised_weak():
     transforms = [
         T.ToDtype(torch.float, scale=True),
     ]
-    return T.Compose(transforms)
-
-
-def get_transform_unsupervised_strong():
-    transforms = [
-                  T.RandomIoUCrop(0.7, 1, 0.5, 2),
-                  T.RandomPhotometricDistort(),
-                  T.RandomHorizontalFlip(p=0.5),
-                  T.RandomChoice([
-                      T.RandomErasing(0.5, (0.01, 0.1), (0.3, 3.3)),
-                      RandomPepperNoise(0.5),
-                      T.RandomApply([T.GaussianBlur(5)], 0.5),
-                      RandomGaussianNoise(0.5)
-                      ]),
-                  T.ClampBoundingBoxes(),
-                  T.SanitizeBoundingBoxes(labels_getter=labels_getter),
-                  T.ToDtype(torch.float, scale=True),
-                  ]
     return T.Compose(transforms)
 
 

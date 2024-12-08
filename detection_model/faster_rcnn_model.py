@@ -7,7 +7,7 @@ from torchvision.models.detection.faster_rcnn import FastRCNNConvFCHead, FastRCN
 from torchvision.models.resnet import resnet50
 from torchvision.models.detection.anchor_utils import AnchorGenerator
 from torchvision.models.detection.backbone_utils import  _resnet_fpn_extractor
-from .roi_head import RoIHeads
+from .faster_rcnn_roi import RoIHeads
 from torchvision.models.detection.rpn import RegionProposalNetwork, RPNHead
 from .model_transform import GeneralizedRCNNTransform
 from .model_utils import check_degenerate_boxes

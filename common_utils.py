@@ -4,7 +4,7 @@ from typing import List
 from torch import Tensor
 from augmentation import custom_augmentation
 import re
-
+import torch
 __all__ = [
     "input_int",
     "collate_fn"

@@ -44,7 +44,7 @@ def plot_dataloader(dataloader, save_folder, classes):
             index += 1
 
 
-def plot_data(image, target, classes, save_folder, data_name):
+def plot_data(image, target, classes, save_folder, data_name, no_labels = False):
     if not os.path.exists(save_folder):
         os.makedirs(save_folder)
     image = (255.0 * (image - image.min()) / (image.max() - image.min())).to(torch.uint8)
@@ -55,5 +55,8 @@ def plot_data(image, target, classes, save_folder, data_name):
     else:
         labels = [classes[label] for label in labels]
 
-    output_image = draw_bounding_boxes(image, boxes, labels, colors="red",width=3)
+    if no_labels:
+        output_image = draw_bounding_boxes(image, boxes, None, colors="red",width=3)
+    else:
+        output_image = draw_bounding_boxes(image, boxes, labels, colors="red", width=3)
     torchvision.transforms.ToPILImage()(output_image).save(f"{save_folder}/{data_name}")
